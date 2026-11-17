@@ -168,7 +168,7 @@ def generate(addon_parent: Path, output: Path, variant: str):
     if basemesh is None or basemesh.type != "MESH":
         raise RuntimeError("MPFB did not generate an actual human mesh")
     Properties.set_value(
-        "gender", 1.0 if variant == "female" else 0.0,
+        "gender", 1.0 if variant == "male" else 0.0,
         entity_reference=basemesh
     )
     TargetService.reapply_macro_details(basemesh)
@@ -236,6 +236,8 @@ def generate(addon_parent: Path, output: Path, variant: str):
         "category": "avatar",
         "subcategory": "rigged_human",
         "variant": variant,
+        "mpfb_gender_macro_value": 1.0 if variant == "male" else 0.0,
+        "gender_mapping_reference": "src/mpfb/data/targets/macrodetails/macro.json",
         "unit": "meter",
         "coordinate_system": "Blender Z-up; glTF export Y-up",
         "dimensions_m": {
