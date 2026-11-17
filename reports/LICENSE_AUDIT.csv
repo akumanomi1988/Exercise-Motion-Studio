@@ -1,1 +1,3 @@
 resource_type,resource_id,source_url,owner,license,license_url,commercial_use,redistribution,evidence_sha256,reviewer,reviewed_at,status,notes
+runtime_dependency,ffmpeg,https://ffmpeg.org/,FFmpeg project,BUILD_DEPENDENT,https://ffmpeg.org/legal.html,PENDING,PENDING,,,"",PENDING,"External local decoder; no binary distributed by this repo. Review actual build flags LGPL/GPL and redistribution before packaging."
+runtime_dependency,ffprobe,https://ffmpeg.org/,FFmpeg project,BUILD_DEPENDENT,https://ffmpeg.org/legal.html,PENDING,PENDING,,,"",PENDING,"External local metadata reader; not bundled. Version and build licensing remain to audit for Windows package."

@@ -1,4 +1,4 @@
-name: Bootstrap Python checks
+name: Python and media ingestion checks
 
 on:
   push:
@@ -27,6 +27,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Install FFmpeg for media integration tests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Check required media binaries
+        run: |
+          command -v ffmpeg
+          command -v ffprobe
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
       - name: Compile and unit tests
         env:
           PYTHONPATH: src/motion_pipeline
