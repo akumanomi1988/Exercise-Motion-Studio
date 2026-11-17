@@ -9,7 +9,10 @@
 | B-05 | OPEN | Integración con Anvil/Supabase | Requiere autorización separada y plan de rollback |
 
 Continuar tareas independientes; no convertir un bloqueo en PASS.
-| B-06 | OPEN | Modelo/pesos de estimación de pose con hash, versión y licencia de explotación comercial verificados | Seleccionar modelo, documentar condiciones de los pesos y aportar versión fija; no declarar exportación comercial hasta validación |
-| B-07 | OPEN | Pipeline de pose/retarget/GLB aún no implementado y sin tests E2E reales | Continuar I1 con captura temporal, skeleton canónico, rig, Blender y QA visual |
+| B-06 | PARTIAL | Modelo Full v1 de MediaPipe con SHA fijado y licencia Apache-2.0 afirmada por Google; resta auditar obligaciones de empaquetado y notice Windows | Incorporar licencia/notices al paquete final y revisar dependencias transitivas antes de explotación |
+| B-07 | PARTIAL | Pose real 46/47 frames y GLB diagnóstico animado probados; sin clip canónico, retarget 2 avatares ni GLB final | Implementar solver de articulaciones, normalización, rig y QA biomecánica sobre T01–T03 |
 | B-08 | OPEN | Inspección humana de asset y pruebas con dos rigs; el nuevo modelo no cuenta como comercial APPROVED | Revisar render/GLB, autorizar origen y probar manos/agarre con ambos avatares |
 | B-09 | OPEN | Falta almacenamiento permanente del asset y catálogo completo | Definir artefactos versionados para activos aprobados, generar resto de familias y cubrir Kinetic |
+| B-10 | OPEN | Necesita 2 avatares comerciales realmente modelados y riggeados; esqueleto de debug no cuenta | Crear/importar con derecho demostrado, verificar skinning, huesos semánticos y retarget sin recalcular pose |
+| B-11 | OPEN | Captura verificada sólo sobre un vídeo real de sentadilla unilateral CC BY-SA 4.0; no existe matriz T01–T10 aprobada | Incorporar diez vídeos propios/autorizados y revisiones de imagen, biomecánica y licencias |
+| B-12 | OPEN | Versión MediaPipe 0.10.35 y FFmpeg probadas en Ubuntu; instalación final Windows x64 no ensayada | Test Windows real, fijar librerías nativas y licencias/NOTICE del instalador |

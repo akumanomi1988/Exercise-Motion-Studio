@@ -1,0 +1,88 @@
+name: Real video MediaPipe pose smoke (noncommercial QA)
+
+on:
+  pull_request:
+    paths:
+      - 'src/motion_pipeline/ems/pose.py'
+      - 'src/motion_pipeline/ems/__main__.py'
+      - 'tests/integration/**'
+      - 'requirements-pose.txt'
+      - 'src/blender/visualize_raw_pose.py'
+      - 'tests/asset/qa_pose_debug.py'
+      - 'scripts/encode-pose-preview.py'
+      - '.github/workflows/pose-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  actual-human-video-pose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install FFmpeg and FFprobe explicitly
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg libgles2 libegl1 libgl1
+      - name: Install CPU pose inference dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-pose.txt
+          command -v ffmpeg && command -v ffprobe
+          python -c 'import mediapipe as mp; print("MEDIAPIPE_VERSION", mp.__version__)'
+      - name: Fetch licensed HUMAN exercise reference and versioned Google pose bundle
+        run: |
+          mkdir -p data/qa-inference/models
+          curl --fail --location --retry 3 --max-time 90 \
+            'https://upload.wikimedia.org/wikipedia/commons/1/16/Basic_single_leg_squat.webm' \
+            --output data/qa-inference/real_single_leg_squat.webm
+          curl --fail --location --retry 3 --max-time 120 \
+            'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task' \
+            --output data/qa-inference/models/pose_landmarker_full.task
+          echo 'Reference: RickyBennison, Basic single leg squat, CC BY-SA 4.0'
+          echo 'Model license: Apache 2.0 per https://github.com/google-ai-edge/mediapipe/issues/6306'
+          echo 'Pinned SHA256 verification:'
+          printf '%s  %s\n'             'ab4602823ad00de3409eb50d2c65c6b1ce5566c5dca6753555ff2b19107db88e'             'data/qa-inference/real_single_leg_squat.webm' | sha256sum --check
+          printf '%s  %s\n'             '5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1'             'data/qa-inference/models/pose_landmarker_full.task' | sha256sum --check
+      - name: Run genuine human-video inference and evaluate raw observations
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          MODEL_SHA="5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1"
+          python tests/integration/smoke_real_pose.py \
+            --video data/qa-inference/real_single_leg_squat.webm \
+            --model data/qa-inference/models/pose_landmarker_full.task \
+            --model-sha256 "$MODEL_SHA" \
+            --qa-output data/qa-inference
+      - name: Verify temporary media excluded from distribution
+        run: |
+          git check-ignore -q data/qa-inference/real_single_leg_squat.webm
+          git check-ignore -q data/qa-inference/models/pose_landmarker_full.task
+          echo "Source video and model are local CI files, not published assets."
+      - name: Build real-landmark diagnostic animated GLB and frames
+        run: |
+          sudo apt-get install -y --no-install-recommends blender python3-numpy python3-pil
+          blender -b --factory-startup --python-exit-code 10 \
+            --python src/blender/visualize_raw_pose.py \
+            -- --pose-raw data/qa-inference/pose_raw.json \
+            --output-dir data/qa-inference/diagnostic
+      - name: Verify genuine animated GLB and produce diagnostic animated WebP
+        run: |
+          blender -b --factory-startup --python-exit-code 10 \
+            --python tests/asset/qa_pose_debug.py \
+            -- --asset-dir data/qa-inference/diagnostic
+          python scripts/encode-pose-preview.py --asset-dir data/qa-inference/diagnostic
+      - name: Archive human-motion diagnostic, NOT commercial approval
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: licensed-real-single-leg-squat-pose-diagnostic-unapproved
+          path: |
+            data/qa-inference/SOURCE_ATTRIBUTION.txt
+            data/qa-inference/diagnostic/pose_debug.glb
+            data/qa-inference/diagnostic/pose_debug.png
+            data/qa-inference/diagnostic/pose_debug.webp
+            data/qa-inference/diagnostic/debug_manifest.json
+          retention-days: 7

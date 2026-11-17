@@ -1,0 +1,3 @@
+# Optional local CPU pose inference. NOT installed by default CLI/bootstrap.
+# Exact direct dependency pinned; transitive lock and Windows packaging remain G0 work.
+mediapipe==0.10.35
