@@ -68,3 +68,11 @@ Próxima ejecución: verificación Windows, revisión de licencias/pesos, contra
 - Corrección previa a CI: ajustar ancho/alto de envelope de la barra sin discos a la geometría real del collar (0,078 m), no al diámetro del disco de la configuración seleccionada.
 - CI final 44117688418 SUCCESS: builds 20/60 kg, round-trip GLB, topología de discos, material, dimensiones y píxeles de render. Prueba comercial fail-closed confirma ausencia de aprobación.
 - No hay animación ni grip constraint probado; no declarar AG2/G2 PASS. El material es original procedural, sin recursos 3D de terceros.
+
+## AG1.2/G1.2 — 2026-11-17 — evaluación real y fallo visual documentado
+1. PR #15 integró el mapeo correcto de género tras detectar inversión en MPFB `macro.json` que QA estructural no había detectado. CI 44118646868 PASS.
+2. PR #16 implementó un retarget experimental con 16 huesos sobre dos GLB MakeHuman skinned reales, usando `solved_skeleton.json` del vídeo CC BY-SA real de Wikimedia (46/47 observaciones), y verificación de movimiento de malla al reimportar.
+3. CI 44120835127 SUCCESS en pruebas técnicas; cifras de desviación máxima de vértices importados 1,147209 m (male) y 1,052190 m (female). El examen visual de los PNG/WebP reales encontró cuerpos deformados, piernas incongruentes y penetraciones severas. **Visual FAIL**.
+4. Ajuste experimental de swings relativos a un frame de referencia, omisiones de segmentos de baja confianza y límites de velocidad angular. CI 44121806410 SUCCESS técnico, pero inspección visual externa del artifact 14346355960 sigue mostrando graves deformaciones. **Visual FAIL**.
+5. Nueva prueba en progreso distingue render de bind-rest del GLB importado de la malla retargeteada en pose neutral. Foco: skinning/inverse bind y transformaciones jerárquicas; no dar por completado G1 sin corregir artefactos visuales.
+6. No se ha publicado ningún recurso retargeteado comercialmente ni se han modificado Anvil Fitness/Supabase.
