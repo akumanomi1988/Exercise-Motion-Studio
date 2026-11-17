@@ -22,3 +22,7 @@ Continuar tareas independientes; no convertir un bloqueo en PASS.
 
 | B-15 | OPEN | La barra olímpica 20/60 kg es solo un activo procedural estático, sin movimiento acoplado a dos manos ni validación con ambos avatares | Ejecutar T06/T07 real autorizado con rig, restricción bilateral, colisiones, glTF animado y QA |
 | B-16 | OPEN | Ambos activos humanos y barra originales tienen revisión visual comercial y aprobación de distribución PENDING | Revisar evidencias CI temporales, guardar provenance y firmar aprobación previa a publicar |
+
+| B-17 | OPEN / VISUAL_FAIL | Retarget sobre humano real deformable: GLB y vertex animation técnicamente PASS pero anatomía visual completamente inválida (caderas/piernas, torsiones, contacto) en CI 44120835127 y 44121806410 | Comparar bind-pose GLB vs .blend original, revisar poseBone.matrix jerárquico, deltas de referencia, pivotes y skinning; exigir fotogramas reproducibles y validación visual humana antes de merge G1 |
+| B-18 | OPEN / LICENSE_REVIEW | Movimiento derivado del vídeo Wikimedia CC BY-SA 4.0: resultados diagnósticos deben cumplir atribución y condiciones ShareAlike, incompatibles con distribución exclusiva propietaria sin estudio | Mantener únicamente como QA y usar vídeo propio/autorizado para clips distribuibles exclusivos; auditar licencias por recurso |
+| B-19 | FIXED | Inversión del parámetro `gender` MakeHuman en artefactos iniciales AG1 | PR #15 fusionada y CI 44118646868: `male=1.0` / `female=0.0` conforme a macro.json pinned; descartar artifacts anteriores |
