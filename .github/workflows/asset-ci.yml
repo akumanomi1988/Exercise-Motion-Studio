@@ -4,13 +4,13 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/blender/**'
-      - 'tests/asset/**'
+      - 'src/blender/generate_hex_dumbbell.py'
+      - 'tests/asset/qa_hex_dumbbell.py'
       - '.github/workflows/asset-ci.yml'
   pull_request:
     paths:
-      - 'src/blender/**'
-      - 'tests/asset/**'
+      - 'src/blender/generate_hex_dumbbell.py'
+      - 'tests/asset/qa_hex_dumbbell.py'
       - '.github/workflows/asset-ci.yml'
   workflow_dispatch:
 
