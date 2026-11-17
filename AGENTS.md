@@ -79,3 +79,9 @@ Actualizar en cada iteración:
 - `reports/LICENSE_AUDIT.csv` — cada dependencia, peso, vídeo y asset, origen/licencia/permisos.
 
 **Primer comando de la primera sesión:** abrir la especificación y empezar I0/G0. No invertir toda la sesión en planificación sin crear y comprobar código ejecutable.
+
+## Ampliación obligatoria — catálogo de activos 3D (AG0–AG5)
+
+Leer **`docs/ASSET_LIBRARY.md`** como parte normativa del proyecto, junto a la especificación original. Implementar un catálogo reutilizable y versionado de **dos avatares (hombre y mujer) con rig**, pesos libres, mancuernas, discos, barras, bancos, racks, poleas, agarres intercambiables, bandas, accesorios y máquinas de gimnasio con cinemática funcional. Cada asset exige `asset.json`, source editable, GLB comercialmente distribuible, procedencia/licencia, preview y QA. La taxonomía del catálogo se reconciliará con todos los equipos usados por el snapshot de Kinetic. No marcar G2/G3/G4/G6 en PASS si faltan equipos, rigs, licencias o pruebas reales. Los gates AG0–AG5 y validaciones específicas están en `docs/ASSET_LIBRARY.md`.
+
+Para iniciar una nueva conversación, puede emplearse `docs/PROMPT_CONTINUACION.md`; el estado efectivo debe consultarse siempre desde el repositorio, sus issues y los informes, no deducirse del prompt.
