@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'src/motion_pipeline/ems/pose.py'
+      - 'src/motion_pipeline/ems/solver.py'
+      - 'tests/unit/test_solver.py'
       - 'src/motion_pipeline/ems/__main__.py'
       - 'tests/integration/**'
       - 'requirements-pose.txt'
@@ -81,6 +83,7 @@ jobs:
           name: licensed-real-single-leg-squat-pose-diagnostic-unapproved
           path: |
             data/qa-inference/SOURCE_ATTRIBUTION.txt
+            data/qa-inference/solved_skeleton.json
             data/qa-inference/diagnostic/pose_debug.glb
             data/qa-inference/diagnostic/pose_debug.png
             data/qa-inference/diagnostic/pose_debug.webp
