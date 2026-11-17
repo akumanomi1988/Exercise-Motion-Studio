@@ -1,6 +1,6 @@
 """Retarget an authentic solved MediaPipe recording onto a real MPFB skinned rig.
 
-This is an *experimental swing-direction* transfer to a deformable MakeHuman
+This is an *experimental reference-relative swing* transfer to a deformable MakeHuman
 body, never a validated motion.json / foot IK / joint-twist / commercial clip.
 The solver's relative coordinates cannot recover absolute root translation.
 No procedural substitute movements are generated or silently approved.
@@ -110,6 +110,25 @@ def infer_alignment(frames: list[dict], rig) -> Matrix:
     require(abs(transform.determinant() - 1) < 1e-3,
             "failed orientation calibration")
     return transform
+
+
+def choose_reference(frames: list[dict]) -> dict:
+    """Select a measured relatively upright pose as zero-swing calibration.
+
+    This is a visual stabilization heuristic, NOT an assertion that a
+    biomechanically correct standing frame was observed or approved.
+    """
+    def upright_score(sample):
+        j = sample["joints"]
+        p = {k: from_solved(v) for k, v in j.items()}
+        torso = direction(p["pelvis"], p["chest"])
+        supporting_leg = max(
+            -(direction(p["leftHip"], p["leftAnkle"]).z),
+            -(direction(p["rightHip"], p["rightAnkle"]).z),
+        )
+        return .70 * torso.z + .30 * supporting_leg
+
+    return max(frames, key=upright_score)
 
 
 def _find_real_skin():
@@ -257,7 +276,26 @@ def generate(source: Path, avatar: Path, output: Path,
     bpy.ops.object.delete(use_global=False)
     bpy.ops.import_scene.gltf(filepath=str(avatar_glb))
     rig, mesh = _find_real_skin()
-    align = infer_alignment(captured, rig)
+    # Transfer DELTAS from a measured reference direction to the respective
+    # MPFB rest directions. Absolute pose orientations from an uncalibrated
+    # monocular pose source are not a rig's canonical rest pose.
+    reference = choose_reference(captured)
+    align = infer_alignment([reference], rig)
+    ref_xyz = {name: align @ from_solved(vec)
+               for name, vec in reference["joints"].items()}
+    rest_dirs = {
+        name: direction(rig.data.bones[name].head_local,
+                        rig.data.bones[name].tail_local)
+        for name, _, _ in BONE_TARGETS
+    }
+    reference_dirs = {
+        name: direction(ref_xyz[parent], ref_xyz[child])
+        for name, parent, child in BONE_TARGETS
+    }
+    last_safe_dirs = {}
+    low_visibility_holds = 0
+    temporal_swing_clamps = 0
+    maximum_allowed_step_deg = 55.
 
     first_ms = stamps[0]
     last_frame_number = 0
@@ -289,8 +327,32 @@ def generate(source: Path, avatar: Path, output: Path,
             continue
         p = {name: align @ from_solved(vec)
              for name, vec in last_observed["joints"].items()}
+        unreliable = {
+            flag["segment"] for flag in
+            last_observed.get("unreliable_segments", [])
+        }
         for posebone, parent, child in mapped:
-            expected = direction(p[parent], p[child])
+            name = posebone.name
+            if child in unreliable:
+                # An obscured elbow/wrist/ankle is NOT replaced with an
+                # invented anatomical estimate. Hold the previous safe
+                # direction, or rest direction if never observed.
+                low_visibility_holds += 1
+                expected = last_safe_dirs.get(name, rest_dirs[name])
+            else:
+                observed_dir = direction(p[parent], p[child])
+                relative_swing = reference_dirs[name].rotation_difference(
+                    observed_dir
+                )
+                expected = relative_swing @ rest_dirs[name]
+                previous = last_safe_dirs.get(name, rest_dirs[name])
+                step_deg = math.degrees(previous.angle(expected))
+                if step_deg > maximum_allowed_step_deg:
+                    temporal_swing_clamps += 1
+                    expected = previous.slerp(
+                        expected, maximum_allowed_step_deg / step_deg
+                    )
+                last_safe_dirs[name] = expected
             err = _set_global_direction(posebone, expected)
             peak_angular_error = max(peak_angular_error, err)
         for posebone, _, _ in mapped:
@@ -348,6 +410,12 @@ def generate(source: Path, avatar: Path, output: Path,
         "rig_bones": len(rig.data.bones),
         "animated_bones": len(BONE_TARGETS),
         "method": "REAL_CAPTURE_SEGMENT_DIRECTION_RETARGET",
+        "strategy": "REFERENCE_RELATIVE_SWING_UNCALIBRATED",
+        "reference_timestamp_ms": reference["timestamp_ms"],
+        "reference_selection": "MOST_UPRIGHT_OBSERVED_NOT_VALIDATED_NEUTRAL",
+        "low_visibility_bone_holds": low_visibility_holds,
+        "temporal_swing_clamps": temporal_swing_clamps,
+        "swing_step_screen_limit_degrees": maximum_allowed_step_deg,
         "original_video_sha256": raw["source_sha256"],
         "pose_model_sha256": raw["model_sha256"],
         "solved_skeleton_sha256": hashfile(source),
@@ -396,6 +464,8 @@ def generate(source: Path, avatar: Path, output: Path,
         "mapped_bones": len(BONE_TARGETS),
         "maximum_bone_alignment_error_degrees": round(peak_angular_error, 5),
         "missing_frames_held_for_review": len(held_missing),
+        "low_visibility_bone_holds": low_visibility_holds,
+        "temporal_swing_clamps": temporal_swing_clamps,
         "human_visual_review": "PENDING",
         "commercial_approval": False,
     }))
