@@ -102,6 +102,9 @@ def main():
                 "https://creativecommons.org/licenses/by-sa/4.0/\n"
                 "Changes: sampled and transformed to raw MediaPipe landmarks; "
                 "later rendered as a diagnostic skeletal visualization.\n"
+                "Adaptations (captured motion, constrained skeleton and associated "
+                "GLB/PNG/WebP previews) are shared under CC BY-SA 4.0 to the "
+                "extent derived from this licensed source.\n"
                 "NOT commercially approved. No original video copied into the output.\n",
                 encoding="utf-8",
             )
