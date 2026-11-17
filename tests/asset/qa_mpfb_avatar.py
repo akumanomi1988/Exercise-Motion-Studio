@@ -42,6 +42,7 @@ def validate(path: Path):
     meta = json.loads((path / "asset.json").read_text(encoding="utf-8"))
     assert meta["source"]["upstream_commit"] == "9de0707fdc88438d7c53a1a2ac7937d9221e2431"
     assert meta["source"]["assets_license"] == "CC0-1.0"
+    assert meta["mpfb_gender_macro_value"] == (1.0 if meta["variant"] == "male" else 0.0)
     assert meta["source"]["external_asset_packs_used"] is False
     assert meta["licenses"]["status"] == "PENDING"
     assert meta["licenses"]["distribution_approved"] is False
