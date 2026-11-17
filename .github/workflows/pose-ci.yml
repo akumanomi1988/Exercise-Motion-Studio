@@ -7,6 +7,9 @@ on:
       - 'src/motion_pipeline/ems/__main__.py'
       - 'tests/integration/**'
       - 'requirements-pose.txt'
+      - 'src/blender/visualize_raw_pose.py'
+      - 'tests/asset/qa_pose_debug.py'
+      - 'scripts/encode-pose-preview.py'
       - '.github/workflows/pose-ci.yml'
   workflow_dispatch:
 
@@ -51,9 +54,35 @@ jobs:
           python tests/integration/smoke_real_pose.py \
             --video data/qa-inference/real_single_leg_squat.webm \
             --model data/qa-inference/models/pose_landmarker_full.task \
-            --model-sha256 "$MODEL_SHA"
+            --model-sha256 "$MODEL_SHA" \
+            --qa-output data/qa-inference
       - name: Verify temporary media excluded from distribution
         run: |
           git check-ignore -q data/qa-inference/real_single_leg_squat.webm
           git check-ignore -q data/qa-inference/models/pose_landmarker_full.task
           echo "Source video and model are local CI files, not published assets."
+      - name: Build real-landmark diagnostic animated GLB and frames
+        run: |
+          sudo apt-get install -y --no-install-recommends blender python3-numpy python3-pil
+          blender -b --factory-startup --python-exit-code 10 \
+            --python src/blender/visualize_raw_pose.py \
+            -- --pose-raw data/qa-inference/pose_raw.json \
+            --output-dir data/qa-inference/diagnostic
+      - name: Verify genuine animated GLB and produce diagnostic animated WebP
+        run: |
+          blender -b --factory-startup --python-exit-code 10 \
+            --python tests/asset/qa_pose_debug.py \
+            -- --asset-dir data/qa-inference/diagnostic
+          python scripts/encode-pose-preview.py --asset-dir data/qa-inference/diagnostic
+      - name: Archive human-motion diagnostic, NOT commercial approval
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: licensed-real-single-leg-squat-pose-diagnostic-unapproved
+          path: |
+            data/qa-inference/SOURCE_ATTRIBUTION.txt
+            data/qa-inference/diagnostic/pose_debug.glb
+            data/qa-inference/diagnostic/pose_debug.png
+            data/qa-inference/diagnostic/pose_debug.webp
+            data/qa-inference/diagnostic/debug_manifest.json
+          retention-days: 7
