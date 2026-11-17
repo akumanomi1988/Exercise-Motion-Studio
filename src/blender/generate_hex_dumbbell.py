@@ -173,7 +173,22 @@ def generate(output: Path, mass_kg: float) -> dict:
             {"id": "left_head", "position_m": [-center_distance, 0, 0]},
             {"id": "right_head", "position_m": [center_distance, 0, 0]}
         ],
-        "contact_surfaces": ["left_head_outer", "right_head_outer"],
+        "contact_surfaces": [
+            {"id": "left_head_outer",
+             "point_m": [-outer_length / 2, 0, 0],
+             "normal": [-1, 0, 0], "radius_m": head_radius},
+            {"id": "right_head_outer",
+             "point_m": [outer_length / 2, 0, 0],
+             "normal": [1, 0, 0], "radius_m": head_radius},
+        ],
+        "collision_shapes": [
+            {"id": "left_head", "shape": "cylinder", "center_m": [-center_distance, 0, 0],
+             "axis": [1, 0, 0], "radius_m": head_radius, "length_m": head_length},
+            {"id": "right_head", "shape": "cylinder", "center_m": [center_distance, 0, 0],
+             "axis": [1, 0, 0], "radius_m": head_radius, "length_m": head_length},
+            {"id": "shaft", "shape": "cylinder", "center_m": [0, 0, 0],
+             "axis": [1, 0, 0], "radius_m": shaft_radius, "length_m": shaft_length},
+        ],
         "kinematics": {"type": "rigid", "joints": []},
         "procedural_parameters": {"mass_kg": mass_kg, "head_radius_m": head_radius,
                                   "head_length_m": head_length,
