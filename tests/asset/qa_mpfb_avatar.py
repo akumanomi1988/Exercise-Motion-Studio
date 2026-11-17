@@ -63,6 +63,7 @@ def validate(path: Path):
     glb_count = sum(any(g.weight > 0 for g in vertex.groups)
                     for vertex in imported_mesh.data.vertices)
     assert glb_count > 1000
+    glb_bone_count = len(imported_rig.data.bones)
     dims = meta["dimensions_m"]
     assert 1.3 < dims["height_z"] < 2.5
 
@@ -112,7 +113,7 @@ def validate(path: Path):
         "technical_rig_roundtrip": "PASS",
         "asset_id": meta["asset_id"],
         "variant": meta["variant"],
-        "glb_bones": len(imported_rig.data.bones),
+        "glb_bones": glb_bone_count,
         "glb_skinned_vertices": glb_count,
         "original_bones": len(rig.data.bones),
         "original_vertices": len(body.data.vertices),
