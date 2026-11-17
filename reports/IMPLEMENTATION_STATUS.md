@@ -1,18 +1,22 @@
 # Estado de implementación
 
-Actualizado: 2026-11-17
+Actualizado: 2026-11-17 — HEAD del bootstrap: `a7c96a2519b4f1711f8a25fbbf20167549a1cf28`.
 
-**Resultado global: IN_PROGRESS / NO VALIDADO.** Los Markdown son contratos y la inicialización del repositorio no implementa ni valida Motion Capture.
+**Resultado global: IN_PROGRESS — MoCap NO IMPLEMENTADO.**
 
-| Gate | Estado | Evidencia que falta |
+| Gate | Estado | Evidencia / Pendientes |
 |---|---|---|
-| G0: setup/doctor/CLI/tests/entorno limpio | IN_PROGRESS | Ejecutar scripts en Windows 10/11, resolver dependencias y auditoría |
-| G1: vídeo->rig->GLB/WebP (T01-T03) | NOT_STARTED | 3 vídeos autorizados, 2 rigs, render y QA |
-| G2: equipamiento simple (T04-T08) | NOT_STARTED | Contactos y 5 ejercicios reales |
-| G3: máquinas (T09-T10) | NOT_STARTED | Modelos autorizados, perfiles y aprobación |
-| G4: piloto 10/10 | NOT_STARTED | E2E sobre material real, visual y licencias |
-| G5: snapshot Kinetic | NOT_STARTED | Snapshot, inventario y reconciliación de IDs |
-| G6: 100 % Kinetic | NOT_STARTED | 100 % de assets aprobados |
-| G7: Supabase/Anvil Fitness | BLOCKED | Autorización separada, sólo dry-run inicial |
+| G0: entorno limpio Windows, CLI, tests, auditoría | IN_PROGRESS | Bootstrap Python PASS 9/9 en Linux CI; falta instalación real Windows/Blender/FFmpeg/.NET, locks y auditoría |
+| G1: movimiento, dos avatares, T01–T03 | NOT_STARTED | No existe captura/retarget/render real |
+| G2: equipamiento libre T04–T08 | NOT_STARTED | No existen modelos/contactos |
+| G3: máquinas T09–T10 | NOT_STARTED | Faltan plantillas y licencias |
+| G4: piloto 10/10 | NOT_STARTED | Faltan diez vídeos autorizados y aprobación |
+| G5: importación snapshot Kinetic | NOT_STARTED | No se ha ejecutado inventario |
+| G6: 100 % catálogo Kinetic | NOT_STARTED | Sin medios finales |
+| G7: integración Anvil/Supabase | BLOCKED | Requiere autorización separada |
 
-Ninguna fecha ni commit de esta tabla es evidencia de prueba completada. Actualizar con comandos y artefactos REALES tras cada iteración.
+**CI verificada:** [Bootstrap Python checks](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44094428263) — SUCCESS sobre commit `a7c96a2`; 9 tests unitarios en 0,015 s (Python 3.11, ubuntu-latest), compileall y doctor sin fallos.
+
+**Qué prueban esos tests:** registro de vídeo local, declaración de derechos, no aprobación comercial, hash/idempotencia, extensiones, ID y diagnósticos. **No prueban:** vídeo decodificable, pose, 3D, Blender, WebP, hardware Windows ni viabilidad comercial de assets.
+
+Hitos y trabajo futuro: [Issues del repositorio](https://github.com/akumanomi1988/Exercise-Motion-Studio/issues).
