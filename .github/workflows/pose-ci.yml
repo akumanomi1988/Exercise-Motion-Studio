@@ -6,6 +6,7 @@ on:
       - 'src/motion_pipeline/ems/pose.py'
       - 'src/motion_pipeline/ems/solver.py'
       - 'tests/unit/test_solver.py'
+      - 'src/blender/visualize_solved_skeleton.py'
       - 'src/motion_pipeline/ems/__main__.py'
       - 'tests/integration/**'
       - 'requirements-pose.txt'
@@ -76,6 +77,16 @@ jobs:
             --python tests/asset/qa_pose_debug.py \
             -- --asset-dir data/qa-inference/diagnostic
           python scripts/encode-pose-preview.py --asset-dir data/qa-inference/diagnostic
+      - name: Render measured-length skeleton from real captured motion
+        run: |
+          blender -b --factory-startup --python-exit-code 10 \
+            --python src/blender/visualize_solved_skeleton.py \
+            -- --solved data/qa-inference/solved_skeleton.json \
+            --output-dir data/qa-inference/diagnostic_solved             --sample-fps 6
+          blender -b --factory-startup --python-exit-code 10 \
+            --python tests/asset/qa_pose_debug.py \
+            -- --asset-dir data/qa-inference/diagnostic_solved
+          python scripts/encode-pose-preview.py --asset-dir data/qa-inference/diagnostic_solved
       - name: Archive human-motion diagnostic, NOT commercial approval
         if: success()
         uses: actions/upload-artifact@v4
@@ -88,4 +99,8 @@ jobs:
             data/qa-inference/diagnostic/pose_debug.png
             data/qa-inference/diagnostic/pose_debug.webp
             data/qa-inference/diagnostic/debug_manifest.json
+            data/qa-inference/diagnostic_solved/pose_debug.glb
+            data/qa-inference/diagnostic_solved/pose_debug.png
+            data/qa-inference/diagnostic_solved/pose_debug.webp
+            data/qa-inference/diagnostic_solved/debug_manifest.json
           retention-days: 7
