@@ -120,6 +120,11 @@ def inspect(folder: Path):
     require(max_mesh_displacement > .008,
             f"animated GLB has no genuine skin motion: {max_mesh_displacement}")
 
+    # Opening a different .blend destroys Blender RNA object references.
+    # Retain scalar GLB evidence BEFORE that operation.
+    glb_bones = len(rig.data.bones)
+    glb_skin_weights = sum(bool(v.groups) for v in body.data.vertices)
+
     # Reopening the editable Blender project verifies it is more than a
     # glTF roundtrip. It must contain the actual rig with an action.
     bpy.ops.wm.open_mainfile(filepath=str(folder / "retarget_review.blend"))
@@ -133,8 +138,8 @@ def inspect(folder: Path):
         "source_frames": report["source_frames"],
         "actual_detected_frames": report["detected_frames"],
         "mapped_bones": report["animated_bones"],
-        "glb_bones": len(rig.data.bones),
-        "glb_skin_weights": sum(bool(v.groups) for v in body.data.vertices),
+        "glb_bones": glb_bones,
+        "glb_skin_weights": glb_skin_weights,
         "real_mesh_deformation_span_m": round(max_mesh_displacement, 6),
         "human_visual_review": "PENDING",
         "biomechanics_review": "PENDING",
