@@ -189,6 +189,9 @@ def normalize_pose_observations(raw: dict[str, Any]) -> dict[str, Any]:
     normalized = []
     maximum_step_degrees = 0.0
     prior_dirs = {}
+    temporal_events = []
+    max_angular_speed = 0.0
+    screening_speed_deg_s = 450.0  # triage flag only; NOT biomechanical approval
     unreliable = 0
     solved_lengths_max_error = 0.0
     for frame in frames:
@@ -213,7 +216,18 @@ def normalize_pose_observations(raw: dict[str, Any]) -> dict[str, Any]:
                     -1., min(1., _dot(prior_dirs[child], direction))
                 )))
                 maximum_step_degrees = max(maximum_step_degrees, angle)
-            prior_dirs[child] = direction
+                dt_seconds = (timestamp - prior_dirs[child][1]) / 1000.0
+                _require(dt_seconds > 0, "nonpositive interval between detected frames")
+                speed = angle / dt_seconds
+                max_angular_speed = max(max_angular_speed, speed)
+                if speed > screening_speed_deg_s:
+                    temporal_events.append({
+                        "timestamp_ms": timestamp,
+                        "segment": child,
+                        "angular_speed_deg_per_s": round(speed, 3),
+                        "reason": "HIGH_OBSERVED_DIRECTION_CHANGE_REVIEW",
+                    })
+            prior_dirs[child] = (direction, timestamp)
             target = _add(positions[parent], _scale(direction, lengths[child]))
             positions[child] = target
             solved_len = _norm(_sub(target, positions[parent]))
@@ -242,6 +256,12 @@ def normalize_pose_observations(raw: dict[str, Any]) -> dict[str, Any]:
         "max_raw_relative_segment_length_deviation": round(max(raw_max_variation.values()), 6),
         "max_solved_relative_segment_length_deviation": round(solved_lengths_max_error, 12),
         "max_interframe_swing_degrees": round(maximum_step_degrees, 6),
+        "max_interframe_angular_speed_deg_per_s": round(max_angular_speed, 6),
+        "angular_speed_screening_limit_deg_per_s": screening_speed_deg_s,
+        "temporal_review_events": temporal_events,
+        "raw_relative_segment_deviation_by_name": {
+            k: round(v, 6) for k, v in raw_max_variation.items()
+        },
         "low_visibility_segment_samples": unreliable,
         "length_1_percent_check": "TECHNICAL_PASS"
             if solved_lengths_max_error <= 0.01 else "FAIL",
