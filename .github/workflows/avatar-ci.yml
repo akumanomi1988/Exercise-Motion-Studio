@@ -1,0 +1,94 @@
+name: MPFB CC0 dual human rigs - technical build only
+
+on:
+  pull_request:
+    paths:
+      - 'src/blender/build_mpfb_avatars.py'
+      - 'tests/asset/qa_mpfb_avatar.py'
+      - 'tests/asset/qa_dual_avatar.py'
+      - '.github/workflows/avatar-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  two-humanoid-rigs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install headless Blender and procedural build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends blender python3-numpy python3-pil curl
+          blender --version | head -n 2
+          blender -b --factory-startup --python-exit-code 10 \
+            --python-expr 'import numpy; print("NUMPY",numpy.__version__)'
+      - name: Download pinned MPFB SOURCE, not third-party community assets
+        run: |
+          set -euo pipefail
+          MPFB_SHA=9de0707fdc88438d7c53a1a2ac7937d9221e2431
+          mkdir -p data/tools
+          curl --fail --location --retry 3 --max-time 120 \
+            "https://codeload.github.com/makehumancommunity/mpfb2/tar.gz/$MPFB_SHA" \
+            --output data/tools/mpfb-source.tar.gz
+          tar -xzf data/tools/mpfb-source.tar.gz -C data/tools
+          test -f "data/tools/mpfb2-$MPFB_SHA/src/mpfb/data/3dobjs/base.obj"
+          test -f "data/tools/mpfb2-$MPFB_SHA/src/mpfb/data/rigs/standard/weights.game_engine.json"
+          test -f "data/tools/mpfb2-$MPFB_SHA/LICENSE.md"
+          grep -q "CC0 1.0 Universal" "data/tools/mpfb2-$MPFB_SHA/LICENSE.md"
+          echo "MPFB pinned commit $MPFB_SHA"
+          sha256sum data/tools/mpfb-source.tar.gz
+          blender --command extension build \
+            --source-dir "data/tools/mpfb2-$MPFB_SHA/src/mpfb" \
+            --output-dir data/tools
+          EXT_ZIP="$(find data/tools -maxdepth 1 -type f -name 'mpfb*.zip' -print -quit)"
+          test -f "$EXT_ZIP"
+          blender --command extension install-file -r user_default -e "$EXT_ZIP"
+          blender -b --python-exit-code 10 --python-expr \
+            'import bpy, addon_utils; addon_utils.enable("bl_ext.user_default.mpfb"); assert "bl_ext.user_default.mpfb" in bpy.context.preferences.addons; print("MPFB_EXTENSION_READY")'
+      - name: Build adult male MakeHuman CC0 base with GameEngine skin
+        run: |
+          blender -b --python-exit-code 10 \
+            --python src/blender/build_mpfb_avatars.py \
+            -- --addon-parent data/tools/mpfb2-9de0707fdc88438d7c53a1a2ac7937d9221e2431/src \
+            --output-dir data/generated_avatars/male --variant male
+      - name: Test male Blender source, imported GLB skin and bone deformation
+        run: |
+          blender -b --factory-startup --python-exit-code 10 \
+            --python tests/asset/qa_mpfb_avatar.py \
+            -- --asset-dir data/generated_avatars/male
+      - name: Build adult female MakeHuman CC0 base with GameEngine skin
+        run: |
+          blender -b --python-exit-code 10 \
+            --python src/blender/build_mpfb_avatars.py \
+            -- --addon-parent data/tools/mpfb2-9de0707fdc88438d7c53a1a2ac7937d9221e2431/src \
+            --output-dir data/generated_avatars/female --variant female
+      - name: Test female Blender source, imported GLB skin and bone deformation
+        run: |
+          blender -b --factory-startup --python-exit-code 10 \
+            --python tests/asset/qa_mpfb_avatar.py \
+            -- --asset-dir data/generated_avatars/female
+      - name: Check identical rig contract and distinct anatomical morphology
+        run: |
+          python tests/asset/qa_dual_avatar.py --root data/generated_avatars
+      - name: Archive generated humans — technical unapproved, no GPL addon
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mpfb-cc0-male-female-rigged-unreviewed
+          path: |
+            data/generated_avatars/male/asset.glb
+            data/generated_avatars/male/asset.blend
+            data/generated_avatars/male/preview.png
+            data/generated_avatars/male/asset.json
+            data/generated_avatars/male/qa_report.json
+            data/generated_avatars/female/asset.glb
+            data/generated_avatars/female/asset.blend
+            data/generated_avatars/female/preview.png
+            data/generated_avatars/female/asset.json
+            data/generated_avatars/female/qa_report.json
+            data/generated_avatars/dual_avatar_qa.json
+          retention-days: 7
