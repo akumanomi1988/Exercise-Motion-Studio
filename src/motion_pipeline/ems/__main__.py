@@ -7,6 +7,7 @@ import sys
 from ems import __version__
 from ems.doctor import inspect_environment
 from ems.jobs import register_source
+from ems.media import probe_registered_video
 from ems.rights import ALLOWED_RIGHTS_BASES, InputValidationError
 
 
@@ -25,6 +26,12 @@ def build_parser() -> argparse.ArgumentParser:
     register.add_argument("--rights-basis", choices=sorted(ALLOWED_RIGHTS_BASES), required=True)
     register.add_argument("--rights-evidence", required=True)
     register.add_argument("--jobs-dir", default="data/jobs")
+    probe = sub.add_parser(
+        "probe", help="Verify a registered video's metadata and decode all frames"
+    )
+    probe.add_argument("--job-id", required=True, help="24-character registration identifier")
+    probe.add_argument("--jobs-dir", default="data/jobs")
+    probe.add_argument("--decode-timeout-s", type=int, default=300)
     return parser
 
 
@@ -40,6 +47,12 @@ def main(argv: list[str] | None = None) -> int:
                 rights_basis=args.rights_basis,
                 rights_evidence=args.rights_evidence,
                 jobs_dir=args.jobs_dir,
+            )
+        elif args.command == "probe":
+            result = probe_registered_video(
+                job_id=args.job_id,
+                jobs_dir=args.jobs_dir,
+                decode_timeout_s=args.decode_timeout_s,
             )
         else:
             raise InputValidationError("unsupported command")
