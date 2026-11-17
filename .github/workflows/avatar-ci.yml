@@ -6,6 +6,7 @@ on:
       - 'src/blender/build_mpfb_avatars.py'
       - 'tests/asset/qa_mpfb_avatar.py'
       - 'tests/asset/qa_dual_avatar.py'
+      - 'tests/asset/qa_mpfb_bind_rest_fidelity.py'
       - '.github/workflows/avatar-ci.yml'
   workflow_dispatch:
 
@@ -74,8 +75,15 @@ jobs:
       - name: Check identical rig contract and distinct anatomical morphology
         run: |
           python tests/asset/qa_dual_avatar.py --root data/generated_avatars
+      - name: Verify original Blender body matches imported GLB skinned REST geometry
+        run: |
+          for gender in male female; do
+            blender -b --factory-startup --python-exit-code 10 \
+              --python tests/asset/qa_mpfb_bind_rest_fidelity.py -- \
+              --avatar-dir "data/generated_avatars/$gender"
+          done
       - name: Archive generated humans — technical unapproved, no GPL addon
-        if: success()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: mpfb-cc0-male-female-rigged-unreviewed
@@ -85,10 +93,12 @@ jobs:
             data/generated_avatars/male/preview.png
             data/generated_avatars/male/asset.json
             data/generated_avatars/male/qa_report.json
+            data/generated_avatars/male/glb_rest_fidelity.json
             data/generated_avatars/female/asset.glb
             data/generated_avatars/female/asset.blend
             data/generated_avatars/female/preview.png
             data/generated_avatars/female/asset.json
             data/generated_avatars/female/qa_report.json
+            data/generated_avatars/female/glb_rest_fidelity.json
             data/generated_avatars/dual_avatar_qa.json
           retention-days: 7
