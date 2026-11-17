@@ -155,6 +155,13 @@ def generate(pose_raw: Path, out: Path):
     bpy.context.object.data.size = 4
     scene.render.engine = "CYCLES"
     scene.cycles.samples = 8
+    # Ubuntu-packaged Blender may not ship OpenImageDenoiser; this renderer
+    # does not need denoising for diagnostic colored landmarks.
+    if hasattr(scene.cycles, "use_denoising"):
+        scene.cycles.use_denoising = False
+    for layer in scene.view_layers:
+        if hasattr(layer, "cycles") and hasattr(layer.cycles, "use_denoising"):
+            layer.cycles.use_denoising = False
     scene.render.resolution_x = 512
     scene.render.resolution_y = 512
     scene.render.resolution_percentage = 100
