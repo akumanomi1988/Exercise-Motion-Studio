@@ -1,0 +1,36 @@
+name: Bootstrap Python checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/**'
+      - 'pyproject.toml'
+      - '.github/workflows/ci.yml'
+  workflow_dispatch:
+
+jobs:
+  python-bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile and unit tests
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          python -m compileall -q src/motion_pipeline/ems
+          python -m unittest discover -s tests/unit -v
+          python -m ems doctor
