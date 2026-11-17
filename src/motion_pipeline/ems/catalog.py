@@ -115,7 +115,7 @@ def inspect_asset_folder(folder: str | Path, require_commercial: bool = False) -
     _check(isinstance(files, dict) and isinstance(hashes, dict), "models/hashes missing")
     for role, ext in _FILE_TYPES.items():
         name = files.get(role)
-        _check(isinstance(name, str) and name == Path(name).name and name.endswith(ext),
+        _check(isinstance(name, str) and name == Path(name).name and "/" not in name and "\\" not in name and name.endswith(ext),
                f"unsafe {role} model path")
         item = root / name
         _check(item.is_file() and not item.is_symlink() and item.resolve().parent == root,
