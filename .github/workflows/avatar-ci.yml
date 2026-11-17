@@ -41,10 +41,14 @@ jobs:
           grep -q "CC0 1.0 Universal" "data/tools/mpfb2-$MPFB_SHA/LICENSE.md"
           echo "MPFB pinned commit $MPFB_SHA"
           sha256sum data/tools/mpfb-source.tar.gz
-          BV="$(blender --version | head -1 | cut -d' ' -f2 | cut -d. -f1,2)"
-          AD="$HOME/.config/blender/$BV/scripts/addons"
-          mkdir -p "$AD"
-          ln -s "$PWD/data/tools/mpfb2-$MPFB_SHA/src/mpfb" "$AD/mpfb"
+          blender --command extension build \
+            --source-dir "data/tools/mpfb2-$MPFB_SHA/src/mpfb" \
+            --output-dir data/tools
+          EXT_ZIP="$(find data/tools -maxdepth 1 -type f -name 'mpfb*.zip' -print -quit)"
+          test -f "$EXT_ZIP"
+          blender --command extension install-file -r user_default -e "$EXT_ZIP"
+          blender -b --python-exit-code 10 --python-expr \
+            'import bpy, addon_utils; addon_utils.enable("bl_ext.user_default.mpfb"); assert "bl_ext.user_default.mpfb" in bpy.context.preferences.addons; print("MPFB_EXTENSION_READY")'
       - name: Build adult male MakeHuman CC0 base with GameEngine skin
         run: |
           blender -b --factory-startup --python-exit-code 10 \

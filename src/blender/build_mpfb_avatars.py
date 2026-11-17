@@ -40,19 +40,26 @@ def _sha(path: Path) -> str:
 
 def _addon(addon_parent: Path):
     package = addon_parent / "mpfb"
-    if not (package / "__init__.py").is_file():
-        raise RuntimeError("MPFB source missing, no automatic download permitted")
+    if not (package / "blender_manifest.toml").is_file():
+        raise RuntimeError("Pinned MPFB source manifest missing")
     import addon_utils
-    sys.path.insert(0, str(addon_parent))
-    # Blender addon_utils registers services and preferences, unlike a plain
-    # Python import. Fail instead of silently using an uninitialized addon.
-    addon_utils.enable("mpfb", default_set=False, persistent=False)
-    if "mpfb" not in bpy.context.preferences.addons:
-        raise RuntimeError("MPFB add-on was not registered in Blender preferences")
-    from mpfb.services.humanservice import HumanService
-    from mpfb.services.targetservice import TargetService
-    from mpfb.entities.objectproperties import HumanObjectProperties
-    return HumanService, TargetService, HumanObjectProperties
+    import importlib
+    module_name = "bl_ext.user_default.mpfb"
+    addon_utils.enable(module_name, default_set=False, persistent=False)
+    if module_name not in bpy.context.preferences.addons:
+        raise RuntimeError("MPFB Blender extension was not enabled")
+    # Blender 4.2+ Extensions must be imported through their registered
+    # bl_ext namespace so bpy.utils.extension_path_user works correctly.
+    HumanService = importlib.import_module(
+        module_name + ".services.humanservice"
+    ).HumanService
+    TargetService = importlib.import_module(
+        module_name + ".services.targetservice"
+    ).TargetService
+    Properties = importlib.import_module(
+        module_name + ".entities.objectproperties"
+    ).HumanObjectProperties
+    return HumanService, TargetService, Properties
 
 
 def _material(name, color, roughness=.65):
