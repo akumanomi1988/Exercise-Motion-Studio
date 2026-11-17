@@ -17,6 +17,7 @@ import argparse
 import hashlib
 import json
 import math
+import struct
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -62,6 +63,23 @@ def _material(name, color, roughness=.65):
     bsdf.inputs["Roughness"].default_value = roughness
     m.diffuse_color = (*color, 1)
     return m
+
+
+def _evaluated_geometry_hash(mesh):
+    bpy.context.view_layer.update()
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    evaluated = mesh.evaluated_get(depsgraph)
+    data = evaluated.to_mesh()
+    try:
+        hasher = hashlib.sha256()
+        for vertex in data.vertices:
+            hasher.update(struct.pack(
+                "<3f", float(vertex.co.x), float(vertex.co.y),
+                float(vertex.co.z)
+            ))
+        return hasher.hexdigest()
+    finally:
+        evaluated.to_mesh_clear()
 
 
 def _outfit_surface(mesh, variant):
@@ -146,6 +164,7 @@ def generate(addon_parent: Path, output: Path, variant: str):
         entity_reference=basemesh
     )
     TargetService.reapply_macro_details(basemesh)
+    body_geometry_hash = _evaluated_geometry_hash(basemesh)
     # Both variants use identical GAME_ENGINE semantic bones and weight pack.
     rig = HumanService.add_builtin_rig(
         basemesh, RIG_NAME, import_weights=True
@@ -225,6 +244,7 @@ def generate(addon_parent: Path, output: Path, variant: str):
             "bones": bone_map,
             "bone_count": len(bone_map),
             "base_vertex_count": len(basemesh.data.vertices),
+            "evaluated_mesh_sha256": body_geometry_hash,
             "weighted_vertices": skinned,
             "material_scheme": "TECHNICAL_TRAINING_GARMENT_SURFACES_NOT_REAL_CLOTH",
             "animation": "NOT_PRESENT",
@@ -271,6 +291,7 @@ def generate(addon_parent: Path, output: Path, variant: str):
         "weighted_vertices": skinned, "bone_count": len(bone_map),
         "height_m": extents[2],
         "model_glb_bytes": glb.stat().st_size,
+        "evaluated_mesh_sha256": body_geometry_hash,
         "commercial_approval": False,
     }))
 
