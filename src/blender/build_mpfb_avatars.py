@@ -210,6 +210,11 @@ def generate(addon_parent: Path, output: Path, variant: str):
     bpy.ops.export_scene.gltf(
         filepath=str(glb), export_format="GLB",
         use_selection=True, export_skins=True, export_animations=False,
+        # MakeHuman base contains helper/garment geometry hidden with Mask.
+        # Without export_apply, glTF exports those hidden source polygons as a
+        # grotesque skirt/strands, despite the .blend render looking correct.
+        # Blender glTF applies mesh modifiers while preserving Armature skin.
+        export_apply=True,
         export_cameras=False, export_lights=False,
     )
     if not glb.is_file() or glb.stat().st_size < 100_000:
@@ -258,6 +263,8 @@ def generate(addon_parent: Path, output: Path, variant: str):
             "weighted_vertices": skinned,
             "material_scheme": "TECHNICAL_TRAINING_GARMENT_SURFACES_NOT_REAL_CLOTH",
             "animation": "NOT_PRESENT",
+            "export_apply_nonarmature_modifiers": True,
+            "helper_geometry_export": "MASKED_BY_EVALUATED_MESH",
             "retarget": "NOT_VERIFIED",
         },
         "grip_points": [],
