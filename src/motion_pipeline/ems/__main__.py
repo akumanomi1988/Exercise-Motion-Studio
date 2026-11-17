@@ -9,6 +9,7 @@ from ems.catalog import inspect_asset_folder
 from ems.doctor import inspect_environment
 from ems.jobs import register_source
 from ems.media import probe_registered_video
+from ems.pose import capture_registered_video
 from ems.rights import ALLOWED_RIGHTS_BASES, InputValidationError
 
 
@@ -37,6 +38,14 @@ def build_parser() -> argparse.ArgumentParser:
     asset.add_argument("--asset-dir", required=True)
     asset.add_argument("--require-commercial", action="store_true",
                        help="Block unless distribution rights review is recorded")
+    capture = sub.add_parser("capture", help="Run local MediaPipe pose inference on a probed video")
+    capture.add_argument("--job-id", required=True)
+    capture.add_argument("--model", required=True, help="Locally stored versioned PoseLandmarker .task")
+    capture.add_argument("--model-sha256", required=True, help="Expected lower-case SHA256")
+    capture.add_argument("--jobs-dir", default="data/jobs")
+    capture.add_argument("--sample-fps", type=int, default=8)
+    capture.add_argument("--resolution", type=int, default=512)
+    capture.add_argument("--max-duration-s", type=int, default=120)
     return parser
 
 
@@ -62,6 +71,14 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "asset-check":
             result = inspect_asset_folder(
                 args.asset_dir, require_commercial=args.require_commercial
+            )
+        elif args.command == "capture":
+            result = capture_registered_video(
+                job_id=args.job_id, model_path=args.model,
+                model_sha256=args.model_sha256,
+                jobs_dir=args.jobs_dir, sample_fps=args.sample_fps,
+                resolution=args.resolution,
+                max_duration_s=args.max_duration_s,
             )
         else:
             raise InputValidationError("unsupported command")
