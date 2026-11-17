@@ -214,6 +214,19 @@ def _studio(mesh, rig):
     scene.world.color = (.085, .09, .10)
 
 
+def _sample_skin_vertices(mesh):
+    """Sample evaluated *mesh* vertices, not armature transforms alone."""
+    dep = bpy.context.evaluated_depsgraph_get()
+    evaluated = mesh.evaluated_get(dep)
+    geometry = evaluated.to_mesh()
+    try:
+        step = max(1, len(geometry.vertices) // 300)
+        return [tuple(geometry.vertices[i].co)
+                for i in range(0, len(geometry.vertices), step)]
+    finally:
+        evaluated.to_mesh_clear()
+
+
 def generate(source: Path, avatar: Path, output: Path,
              attribution: Path, fps: int):
     require(2 <= fps <= 30, "fps out of supported range")
@@ -276,6 +289,15 @@ def generate(source: Path, avatar: Path, output: Path,
     bpy.ops.object.delete(use_global=False)
     bpy.ops.import_scene.gltf(filepath=str(avatar_glb))
     rig, mesh = _find_real_skin()
+    # Render GLB REST before pose transfer to isolate skin bind problems.
+    scene = bpy.context.scene
+    scene.frame_set(1)
+    bpy.context.view_layer.update()
+    rest_vertices = _sample_skin_vertices(mesh)
+    _studio(mesh, rig)
+    rest_image = output / "imported_glb_rest.png"
+    scene.render.filepath = str(rest_image)
+    bpy.ops.render.render(write_still=True)
     # Transfer DELTAS from a measured reference direction to the respective
     # MPFB rest directions. Absolute pose orientations from an uncalibrated
     # monocular pose source are not a rig's canonical rest pose.
@@ -369,7 +391,18 @@ def generate(source: Path, avatar: Path, output: Path,
                 for key in curve.keyframe_points:
                     key.interpolation = "LINEAR"
 
-    _studio(mesh, rig)
+    # Validate the neutral-reference pose against the imported bind mesh.
+    # Basic moving-vertex tests cannot establish pose or skin correctness.
+    neutral_fno = 1 + round((reference["timestamp_ms"] - first_ms)
+                           * fps / 1000)
+    scene.frame_set(neutral_fno)
+    bpy.context.view_layer.update()
+    neutral_vertices = _sample_skin_vertices(mesh)
+    require(len(rest_vertices) == len(neutral_vertices),
+            "mesh topology changed during retarget")
+    neutral_rest_deviation_m = max(
+        math.dist(a, b) for a, b in zip(rest_vertices, neutral_vertices)
+    )
     scene.frame_set(1)
     editable = output / "retarget_review.blend"
     bpy.ops.wm.save_as_mainfile(filepath=str(editable))
@@ -413,6 +446,8 @@ def generate(source: Path, avatar: Path, output: Path,
         "strategy": "REFERENCE_RELATIVE_SWING_UNCALIBRATED",
         "reference_timestamp_ms": reference["timestamp_ms"],
         "reference_selection": "MOST_UPRIGHT_OBSERVED_NOT_VALIDATED_NEUTRAL",
+        "neutral_reference_rest_deviation_m": round(neutral_rest_deviation_m, 6),
+        "rest_mesh_preview": "imported_glb_rest.png",
         "low_visibility_bone_holds": low_visibility_holds,
         "temporal_swing_clamps": temporal_swing_clamps,
         "swing_step_screen_limit_degrees": maximum_allowed_step_deg,
@@ -433,6 +468,7 @@ def generate(source: Path, avatar: Path, output: Path,
             "editable": "retarget_review.blend",
             "glb": "retarget_review.glb",
             "png": "retarget_review.png",
+            "rest_png": "imported_glb_rest.png",
             "webp": "NOT_GENERATED",
         },
         "rights_review": "PENDING",
@@ -450,6 +486,7 @@ def generate(source: Path, avatar: Path, output: Path,
             for name in ("retarget_review.blend",
                          "retarget_review.glb",
                          "retarget_review.png",
+                         "imported_glb_rest.png",
                          "SOURCE_ATTRIBUTION.txt")
         },
     }
@@ -463,6 +500,7 @@ def generate(source: Path, avatar: Path, output: Path,
         "captured_frames": len(captured),
         "mapped_bones": len(BONE_TARGETS),
         "maximum_bone_alignment_error_degrees": round(peak_angular_error, 5),
+        "neutral_reference_rest_deviation_m": round(neutral_rest_deviation_m, 6),
         "missing_frames_held_for_review": len(held_missing),
         "low_visibility_bone_holds": low_visibility_holds,
         "temporal_swing_clamps": temporal_swing_clamps,
