@@ -1,0 +1,54 @@
+name: Headless Blender asset build and technical QA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/blender/**'
+      - 'tests/asset/**'
+      - '.github/workflows/asset-ci.yml'
+  pull_request:
+    paths:
+      - 'src/blender/**'
+      - 'tests/asset/**'
+      - '.github/workflows/asset-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  hex-dumbbell:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install headless Blender
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends blender python3-numpy python3-pil
+          blender -b --factory-startup --python-exit-code 10 --python-expr 'import numpy; print("NUMPY", numpy.__version__)'
+          blender --version | head -n 2
+      - name: Generate editable asset, GLB and 512x512 preview
+        run: |
+          blender -b --factory-startup --python-exit-code 10 \
+            --python src/blender/generate_hex_dumbbell.py \
+            -- --output-dir data/generated_assets/hex-10kg --mass-kg 10
+      - name: Round-trip validate GLB, materials, PNG and .blend
+        run: |
+          blender -b --factory-startup --python-exit-code 10 \
+            --python tests/asset/qa_hex_dumbbell.py \
+            -- --asset-dir data/generated_assets/hex-10kg
+      - name: Validate actual generated files via production AssetCatalog
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          python -m ems asset-check --asset-dir data/generated_assets/hex-10kg
+          if python -m ems asset-check --asset-dir data/generated_assets/hex-10kg --require-commercial; then
+            echo "ERROR: pending asset unexpectedly passed commercial gate" >&2
+            exit 1
+          fi
+      - name: Archive generated technical evidence (not commercial approval)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-hex-dumbbell-10kg-technical-unreviewed
+          path: data/generated_assets/hex-10kg/
+          retention-days: 7

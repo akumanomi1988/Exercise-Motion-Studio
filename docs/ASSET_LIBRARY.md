@@ -57,3 +57,18 @@ Preferencia por **generación procedural original con Blender/Python** (geometr�
 - **AG5:** inventario Kinetic 100 % vinculado a activos aprobados y compatible con animaciones por ejercicio.
 
 Actualizar `reports/IMPLEMENTATION_STATUS.md`, `reports/LICENSE_AUDIT.csv` y `reports/TEST_RESULTS.md` en cada iteración. No declarar estas fases completas antes de las pruebas reales.
+
+## Implementación AG0 — primer generador, no catálogo completo
+
+Existe un primer activo original procedimental en `src/blender/generate_hex_dumbbell.py`. Genera una mancuerna hexagonal con componentes 3D reales y parámetros de masa nominal (2–30 kg), agarre central, contactos y colisionadores. Esta masa NO es una simulación de densidad ni demuestra biomecánica correcta.
+
+```powershell
+blender -b --factory-startup --python-exit-code 10 --python src/blender/generate_hex_dumbbell.py -- --output-dir data/generated_assets/hex-10kg --mass-kg 10
+blender -b --factory-startup --python-exit-code 10 --python tests/asset/qa_hex_dumbbell.py -- --asset-dir data/generated_assets/hex-10kg
+$env:PYTHONPATH = 'src/motion_pipeline'
+python -m ems asset-check --asset-dir data/generated_assets/hex-10kg
+# Debe fallar: no autorizar comercialización en la prueba técnica
+python -m ems asset-check --asset-dir data/generated_assets/hex-10kg --require-commercial
+```
+
+El test Blender real de referencia: [Actions 44105697508](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44105697508), cinco mallas round-trip y PNG de 512×512. El validador de manifiestos `ems.catalog` sólo prueba rutas seguras, integridad de hashes, metadatos y derechos; no puede certificar calidad de malla ni reproducción Three.js. El GLB/PNG/.blend aparecen como artefactos efímeros de Actions, no como asset comercial aprobado permanente. **AG0 y AG2 continúan IN_PROGRESS/NOT_STARTED según criterios normativos.**

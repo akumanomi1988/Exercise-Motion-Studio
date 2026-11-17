@@ -5,6 +5,7 @@ import json
 import sys
 
 from ems import __version__
+from ems.catalog import inspect_asset_folder
 from ems.doctor import inspect_environment
 from ems.jobs import register_source
 from ems.media import probe_registered_video
@@ -32,6 +33,10 @@ def build_parser() -> argparse.ArgumentParser:
     probe.add_argument("--job-id", required=True, help="24-character registration identifier")
     probe.add_argument("--jobs-dir", default="data/jobs")
     probe.add_argument("--decode-timeout-s", type=int, default=300)
+    asset = sub.add_parser("asset-check", help="Verify asset.json integrity only; not geometry QA")
+    asset.add_argument("--asset-dir", required=True)
+    asset.add_argument("--require-commercial", action="store_true",
+                       help="Block unless distribution rights review is recorded")
     return parser
 
 
@@ -53,6 +58,10 @@ def main(argv: list[str] | None = None) -> int:
                 job_id=args.job_id,
                 jobs_dir=args.jobs_dir,
                 decode_timeout_s=args.decode_timeout_s,
+            )
+        elif args.command == "asset-check":
+            result = inspect_asset_folder(
+                args.asset_dir, require_commercial=args.require_commercial
             )
         else:
             raise InputValidationError("unsupported command")
