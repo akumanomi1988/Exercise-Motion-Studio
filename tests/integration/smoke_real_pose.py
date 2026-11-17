@@ -8,6 +8,7 @@ distribution, retargeting or animation.
 import argparse
 import json
 import math
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -21,6 +22,7 @@ def main():
     p.add_argument("--video", type=Path, required=True)
     p.add_argument("--model", type=Path, required=True)
     p.add_argument("--model-sha256", required=True)
+    p.add_argument("--qa-output", type=Path, help="Optional local diagnostic pose output")
     args = p.parse_args()
 
     with tempfile.TemporaryDirectory(prefix="ems-real-human-smoke-") as directory:
@@ -69,6 +71,22 @@ def main():
         )
         assert manifest["pipeline"]["capture"] == "REVIEW_REQUIRED"
         assert manifest["rights"]["status"] == "USER_ATTESTED"
+        if args.qa_output is not None:
+            folder = args.qa_output.resolve()
+            folder.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(
+                jobs / job["job_id"] / "pose_raw.json", folder / "pose_raw.json"
+            )
+            (folder / "SOURCE_ATTRIBUTION.txt").write_text(
+                "Diagnostic source: Basic single leg squat.webm by RickyBennison\n"
+                "Source: https://commons.wikimedia.org/wiki/File:Basic_single_leg_squat.webm\n"
+                "License: Creative Commons Attribution-ShareAlike 4.0 International\n"
+                "https://creativecommons.org/licenses/by-sa/4.0/\n"
+                "Changes: sampled and transformed to raw MediaPipe landmarks; "
+                "later rendered as a diagnostic skeletal visualization.\n"
+                "NOT commercially approved. No original video copied into the output.\n",
+                encoding="utf-8",
+            )
         print("REAL_VIDEO_POSE_SMOKE_PASS=" + json.dumps({
             "human_reference": "RickyBennison / Wikimedia Commons / CC BY-SA 4.0",
             "input_sha256": job["source"]["sha256"],
