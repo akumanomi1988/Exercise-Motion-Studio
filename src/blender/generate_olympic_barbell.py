@@ -184,7 +184,7 @@ def generate(output: Path, plate_mass_kg: int, plates_per_side: int):
     if len(parts) != expected_count:
         raise RuntimeError(f"wrong procedural mesh count {len(parts)} != {expected_count}")
 
-    studio(radius)
+    studio(radius if plates_per_side else .039)
     blend, glb, png = (output / name for name in
                        ("asset.blend", "asset.glb", "preview.png"))
     bpy.ops.wm.save_as_mainfile(filepath=str(blend))
@@ -202,6 +202,7 @@ def generate(output: Path, plate_mass_kg: int, plates_per_side: int):
     if not all(p.is_file() and p.stat().st_size > 1024 for p in (blend, glb, png)):
         raise RuntimeError("Blender source/GLB/preview not generated")
 
+    effective_radius = radius if plates_per_side else .039
     nominal_loaded = 20 + 2 * plate_mass_kg * plates_per_side
     asset = {
         "schema_version": "1.0", "asset_id":
@@ -218,8 +219,8 @@ def generate(output: Path, plate_mass_kg: int, plates_per_side: int):
         "coordinate_system": "Blender Z-up X axial; GLB normalized to Y-up",
         "unit": "meter",
         "dimensions_m": {
-            "length_x": BAR_LENGTH_M, "width_y": 2 * radius,
-            "height_z": 2 * radius,
+            "length_x": BAR_LENGTH_M, "width_y": 2 * effective_radius,
+            "height_z": 2 * effective_radius,
         },
         "grip_points": [
             {"id": "left_grip", "position_m": [-.42, 0, 0],
