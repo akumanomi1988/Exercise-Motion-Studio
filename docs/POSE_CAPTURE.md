@@ -48,3 +48,19 @@ El SHA-256 del vídeo se fija a \`ab4602823ad00de3409eb50d2c65c6b1ce5566c5dca675
 - Modelo Full v1: Google confirma Apache 2.0 para el bundle exacto en [issue 6306, respuesta oficial](https://github.com/google-ai-edge/mediapipe/issues/6306). Registrar hash exacto y revisar obligaciones de atribución/redistribución cuando se empaquete el instalador.
 - Material Commons: CC BY-SA 4.0, con atribución y condiciones para derivados; **no incluirlo como medio comercial propio**.
 - Siguiente iteración: estimación temporal con tracking/calibración, clip canónico, avatares comerciales masculino/femenino, retarget y QA visual real. Sin esas piezas **G1 sigue NO APROBADO**.
+
+## Diagnóstico 3D no comercial desde captura auténtica
+
+Si ya existe `pose_raw.json` generado realmente por MediaPipe, se puede inspeccionar la trayectoria con:
+
+```powershell
+blender -b --factory-startup --python-exit-code 10 --python src/blender/visualize_raw_pose.py -- --pose-raw data/qa-inference/pose_raw.json --output-dir data/qa-inference/diagnostic
+blender -b --factory-startup --python-exit-code 10 --python tests/asset/qa_pose_debug.py -- --asset-dir data/qa-inference/diagnostic
+python scripts/encode-pose-preview.py --asset-dir data/qa-inference/diagnostic
+```
+
+El diagnóstico crea `pose_debug.glb` con puntos/segmentos animados reales, `pose_debug.png` y `pose_debug.webp` de varios frames. **No es un avatar**, no tiene skinning, huesos anatómicos, IK, calibración, corrección de colisiones ni root motion absoluto. Su estado es `TECHNICAL_VISUALIZATION_ONLY` y queda bloqueado para distribución comercial. Verifica que el GLB contenga animación al reimportarlo, no que esa animación represente fielmente la biomecánica.
+
+En [CI real 44109871802](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44109871802), el modelo detectó 46/47 frames de un humano verdadero; Blender exportó y reimportó 51 mallas/acciones animadas, PNG y WebP 8 frames. Las vistas inspeccionadas presentan movimiento visible, pero articulaciones inestables y segmentos no anatómicos: **no aprobar como recurso final**.
+
+El vídeo de RickyBennison conserva CC BY-SA 4.0; cualquier redistribución de derivados debe revisar atribución y ShareAlike. El archivo CI incluye `SOURCE_ATTRIBUTION.txt`, y no publica el MP4/WebM original ni el modelo de Google. Los artefactos CI expiran a los siete días.
