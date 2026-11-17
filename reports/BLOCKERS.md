@@ -16,3 +16,6 @@ Continuar tareas independientes; no convertir un bloqueo en PASS.
 | B-10 | OPEN | Necesita 2 avatares comerciales realmente modelados y riggeados; esqueleto de debug no cuenta | Crear/importar con derecho demostrado, verificar skinning, huesos semánticos y retarget sin recalcular pose |
 | B-11 | OPEN | Captura verificada sólo sobre un vídeo real de sentadilla unilateral CC BY-SA 4.0; no existe matriz T01–T10 aprobada | Incorporar diez vídeos propios/autorizados y revisiones de imagen, biomecánica y licencias |
 | B-12 | OPEN | Versión MediaPipe 0.10.35 y FFmpeg probadas en Ubuntu; instalación final Windows x64 no ensayada | Test Windows real, fijar librerías nativas y licencias/NOTICE del instalador |
+
+| B-13 | OPEN | En el clip real, desviación segmental original máxima 44,1919 %, 86 segmentos de baja visibilidad y cinco cambios angulares >450°/s; imporponer longitudes constantes no corrige profundidad, ruido ni contacto | Implementar filtrado temporal con QA, calibración, análisis biomecánico y revisión visual; no convertir estos outliers en PASS |
+| B-14 | OPEN | Existe un esqueleto intermedio con dos GLB técnicos, pero no dos avatares humanos riggeados de calidad comercial | Integrar generador/modelos fuente CC0 con skinning, materiales y rig normalizado, demostrar retarget visual sobre ambos |
