@@ -45,7 +45,8 @@ def _addon(addon_parent: Path):
     import addon_utils
     import importlib
     module_name = "bl_ext.user_default.mpfb"
-    addon_utils.enable(module_name, default_set=False, persistent=False)
+    if module_name not in bpy.context.preferences.addons:
+        addon_utils.enable(module_name, default_set=False, persistent=False)
     if module_name not in bpy.context.preferences.addons:
         raise RuntimeError("MPFB Blender extension was not enabled")
     # Blender 4.2+ Extensions must be imported through their registered
