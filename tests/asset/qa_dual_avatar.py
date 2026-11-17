@@ -15,7 +15,10 @@ female = json.loads((root / "female" / "asset.json").read_text(encoding="utf-8")
 mqa = json.loads((root / "male" / "qa_report.json").read_text(encoding="utf-8"))
 fqa = json.loads((root / "female" / "qa_report.json").read_text(encoding="utf-8"))
 assert male["variant"] == "male"
+assert male["mpfb_gender_macro_value"] == 1.0
+assert male["gender_mapping_reference"] == "src/mpfb/data/targets/macrodetails/macro.json"
 assert female["variant"] == "female"
+assert female["mpfb_gender_macro_value"] == 0.0
 assert male["rig"]["profile_id"] == female["rig"]["profile_id"]
 assert male["rig"]["bones"] == female["rig"]["bones"], (
     "Male and female must share identical named hierarchy for retarget mapping"
