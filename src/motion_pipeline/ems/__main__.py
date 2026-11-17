@@ -10,6 +10,7 @@ from ems.doctor import inspect_environment
 from ems.jobs import register_source
 from ems.media import probe_registered_video
 from ems.pose import capture_registered_video
+from ems.solver import solve_registered_capture
 from ems.rights import ALLOWED_RIGHTS_BASES, InputValidationError
 
 
@@ -46,6 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
     capture.add_argument("--sample-fps", type=int, default=8)
     capture.add_argument("--resolution", type=int, default=512)
     capture.add_argument("--max-duration-s", type=int, default=120)
+    solve = sub.add_parser(
+        "solve", help="Normalize real observed joints to fixed-length intermediate skeleton; not retarget"
+    )
+    solve.add_argument("--job-id", required=True)
+    solve.add_argument("--jobs-dir", default="data/jobs")
     return parser
 
 
@@ -79,6 +85,10 @@ def main(argv: list[str] | None = None) -> int:
                 jobs_dir=args.jobs_dir, sample_fps=args.sample_fps,
                 resolution=args.resolution,
                 max_duration_s=args.max_duration_s,
+            )
+        elif args.command == "solve":
+            result = solve_registered_capture(
+                job_id=args.job_id, jobs_dir=args.jobs_dir
             )
         else:
             raise InputValidationError("unsupported command")
