@@ -1,14 +1,14 @@
 # Estado de implementación
 
-Actualizado: 2026-11-17 — main validado `ef1b1d0`; nueva I1.1 en PR #11, validación CI `f64a61f`.
+Actualizado: 2026-11-17 — estado técnico tras PR #13 (merge `3ba87c7`) y PR #14 (CI `44117688418`).
 
 **Resultado global: IN_PROGRESS — captura de pose 3D REAL implementada y probada; retargeting humanoide y catálogo NO completados.**
 
 | Gate | Estado | Evidencia / Pendientes |
 |---|---|---|
 | G0: entorno limpio Windows, CLI, tests, auditoría | IN_PROGRESS | Registro + decodificación completa de vídeos mediante FFmpeg; Linux CI PASS 15/15 (run 44103138578). Falta Windows real/Blender/.NET, locks y auditoría de distribución |
-| G1: movimiento, dos avatares, T01–T03 | IN_PROGRESS | Captura real 46/47 fotogramas, 33 landmarks 3D relativos y GLB diagnóstico animado. Faltan skeleton canónico, retarget a dos rigs reales, contactos y T01–T03 con QA humano |
-| G2: equipamiento libre T04–T08 | NOT_STARTED | Una mancuerna 3D procedural técnicamente validada, sin contacto animado ni licencia/aprobación comercial firmada |
+| G1: movimiento, dos avatares, T01–T03 | IN_PROGRESS | Captura real 46/47 fotogramas, 33 landmarks 3D relativos y GLB diagnóstico animado. Hay esqueleto intermedio y dos avatares skinned verificados; faltan retarget real, contactos y T01–T03 con QA humano |
+| G2: equipamiento libre T04–T08 | NOT_STARTED | Mancuerna hexagonal y barra olímpica procedural con discos verificadas técnicamente; sin contacto/IK ni aprobación comercial |
 | G3: máquinas T09–T10 | NOT_STARTED | Faltan plantillas y licencias |
 | G4: piloto 10/10 | NOT_STARTED | Faltan diez vídeos autorizados y aprobación |
 | G5: importación snapshot Kinetic | NOT_STARTED | No se ha ejecutado inventario |
@@ -43,3 +43,15 @@ Hitos y trabajo futuro: [Issues del repositorio](https://github.com/akumanomi198
 - Variación segmental original máxima **44,1919 %**; tras imponer longitudes estables desviación calculada **0 %** (propiedad geométrica, NO validación biomecánica). 86 muestras de segmento de baja visibilidad y cinco saltos de dirección sospechosos (máximo 504,908 grados/s) registrados para revisión.
 - Dos GLB de diagnóstico generados y reimportados en Blender: original 51 objetos animados, intermedio con segmentos fijos 33 objetos animados; ambos con PNG y WebP animados de ocho fotogramas.
 - **G0 y G1 continúan IN_PROGRESS**: falta validación Windows, calibración, biomecánica, retarget real a dos avatares con skinning y T01–T03. AG1 sigue NOT_STARTED. Ningún recurso de diagnóstico está aprobado para producción comercial.
+
+
+## AG1.1 — 2 avatares humanos MakeHuman/MPFB, pruebas reales de Blender
+- [PR #13 fusionada](https://github.com/akumanomi1988/Exercise-Motion-Studio/pull/13), commit main `3ba87c7`.
+- [CI Blender SUCCESS 44117210502](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44117210502): hombre y mujer generados por separado; 19.158 vértices originales por avatar, 53 huesos con jerarquía común, skinning real y deformación de hueso verificada en el GLB reimportado. `.blend`, `.glb`, PNG y manifiestos creados en artifact 14344455745.
+- MPFB fijado al commit `9de0707fdc88438d7c53a1a2ac7937d9221e2431`. Core/rig/weights CC0 según LICENSE upstream, plugin GPL usado como herramienta externa sin empaquetar. Revisiones legales completas de la cadena de distribución y apariencia humana todavía PENDING.
+- **AG1 = IN_PROGRESS**: falta retarget desde vídeo real sobre ambos avatares, contactos, vídeo T01–T03, validación visual humana, licencia final, web viewer. No confundir prueba de deformación de rig con animación biomecánica válida.
+
+## AG2.1 — barra olímpica procedural original, sin movimiento
+- [PR #14](https://github.com/akumanomi1988/Exercise-Motion-Studio/pull/14), [CI Blender SUCCESS 44117688418](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44117688418): generador paramétrico de barra de 2,20 m, mangas, collars, discos anulares y dos sockets de agarre.
+- Variantes reales generadas/reimportadas: 20 kg nominal (7 meshes, envelope 2,20 × 0,078 × 0,078 m) y 60 kg nominal (9 meshes, envelope 2,20 × 0,45 × 0,45 m). Archivo fuente Blender, GLB y PNG 960×480. AssetCatalog: integridad PASS y comercial `distribution_allowed=false`, como corresponde.
+- Derechos, revisión de imágenes, IK de ambas manos y sincronización real con vídeo: PENDING. **AG2/G2 = IN_PROGRESS/NOT_STARTED según criterios de gate**. No representa un ejercicio exportable aprobado.
