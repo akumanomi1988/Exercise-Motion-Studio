@@ -55,3 +55,16 @@ Próxima ejecución: verificación Windows, revisión de licencias/pesos, contra
 - Se creó `src/blender/visualize_solved_skeleton.py` para exportar el esqueleto de segmentos fijados como GLB animado diagnóstico y renderizar ocho frames. El test ya existente de importación GLB corrió también contra esta escena y verificó movimiento real.
 - Resultados finales [Python 44113258264](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44113258264) PASS 41/41; [vídeo humano + Blender 44113258239](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44113258239) SUCCESS todos los pasos. Diferencia original 44,1919 % de longitud en el peor segmento, corregida geométricamente a 0 %; 86 muestras de baja visibilidad y cinco eventos angular alta >450 grados/s. **Requiere revisión, no biomecánica PASS**.
 - Se explicitó CC BY-SA 4.0 de todos los derivados de la grabación Commons en `SOURCE_ATTRIBUTION.txt`. Ninguna fuente original subida a Git. Siguiente: retarget a avatares con skinning comercialmente aptos, IK y QA de contacto.
+
+## AG1.1 — 2026-11-17 — generación de dos avatares realmente riggeados
+- PR #13: https://github.com/akumanomi1988/Exercise-Motion-Studio/pull/13 — merge main `3ba87c7`.
+- Falla inicial CI 44115908738: MPFB instalado como add-on clásico cuando exige extension `bl_ext.user_default.mpfb`. Segunda falla CI 44116459968: `--factory-startup` vaciaba las preferencias de extensión. Se instaló y habilitó la extensión correctamente y se ejecutó Blender sin esa opción durante build.
+- CI final 44117210502 SUCCESS: humanos masculino y femenino, GameEngine rig compartido de 53 huesos, 19.158 vértices skinned y deformación real al rotar hueso en asset reimportado. Ambos casos técnicamente probados.
+- Bloqueos persistentes: retarget desde vídeo, IK, QA biomecánica, revisión de apariencia y derechos de distribución final. Ningún cambio en Anvil/Supabase. AG1 NO aprobado.
+
+## AG2.1 — 2026-11-17 — primera barra olímpica original, 2 variantes
+- Nuevo `src/blender/generate_olympic_barbell.py` en PR #14, parametrizado por masa nominal de disco (5/10/15/20/25) y número de discos por lado (0..4). Anillos procedurales con huecos pasantes reales en lugar de cilindros macizos intersectando la barra.
+- Cada variante exporta `asset.blend`, `asset.glb`, `preview.png` y `asset.json` con hashes, dos agarres a ±0,42 m, colisionadores y procedencia.
+- Corrección previa a CI: ajustar ancho/alto de envelope de la barra sin discos a la geometría real del collar (0,078 m), no al diámetro del disco de la configuración seleccionada.
+- CI final 44117688418 SUCCESS: builds 20/60 kg, round-trip GLB, topología de discos, material, dimensiones y píxeles de render. Prueba comercial fail-closed confirma ausencia de aprobación.
+- No hay animación ni grip constraint probado; no declarar AG2/G2 PASS. El material es original procedural, sin recursos 3D de terceros.
