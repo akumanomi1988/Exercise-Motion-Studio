@@ -36,6 +36,15 @@ jobs:
           blender -b --factory-startup --python-exit-code 10 \
             --python tests/asset/qa_hex_dumbbell.py \
             -- --asset-dir data/generated_assets/hex-10kg
+      - name: Validate actual generated files via production AssetCatalog
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          python -m ems asset-check --asset-dir data/generated_assets/hex-10kg
+          if python -m ems asset-check --asset-dir data/generated_assets/hex-10kg --require-commercial; then
+            echo "ERROR: pending asset unexpectedly passed commercial gate" >&2
+            exit 1
+          fi
       - name: Archive generated technical evidence (not commercial approval)
         if: success()
         uses: actions/upload-artifact@v4
