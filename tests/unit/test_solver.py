@@ -56,6 +56,7 @@ class SkeletonAlgebraTests(unittest.TestCase):
         self.assertEqual(data["qa"]["length_1_percent_check"], "TECHNICAL_PASS")
         self.assertFalse(data["qa"]["commercial_approval"])
         self.assertEqual(len(data["parent_child_segments"]), len(SEGMENTS))
+        self.assertEqual(len(data["qa"]["raw_relative_segment_deviation_by_name"]), len(SEGMENTS))
 
     def test_every_swing_quaternion_is_unit_length(self):
         solved = normalize_pose_observations(raw())
@@ -93,6 +94,16 @@ class SkeletonAlgebraTests(unittest.TestCase):
         q = _quaternion_between((1., 0., 0.), (-1., 0., 0.))
         self.assertAlmostEqual(math.sqrt(sum(v*v for v in q)), 1)
         self.assertAlmostEqual(q[3], 0)
+
+    def test_screening_outliers_are_review_flags_not_hidden(self):
+        doc = raw()
+        # A dramatic elbow relocation in a short interval is suspicious.
+        doc["frames"][1]["world_landmarks"][13]["x"] = -0.05
+        doc["frames"][1]["world_landmarks"][13]["y"] = -0.60
+        data = normalize_pose_observations(doc)
+        self.assertGreater(data["qa"]["max_interframe_angular_speed_deg_per_s"], 0)
+        self.assertEqual(data["qa"]["angular_speed_screening_limit_deg_per_s"], 450.0)
+        self.assertEqual(data["qa"]["status"], "REVIEW_REQUIRED")
 
     def test_no_absolute_root_motion_or_human_qa_claim(self):
         data = normalize_pose_observations(raw())
