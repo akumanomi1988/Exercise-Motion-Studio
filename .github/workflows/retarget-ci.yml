@@ -118,6 +118,7 @@ jobs:
             data/qa-inference/retarget_male/retarget_review.blend
             data/qa-inference/retarget_male/retarget_review.glb
             data/qa-inference/retarget_male/retarget_review.png
+            data/qa-inference/retarget_male/imported_glb_rest.png
             data/qa-inference/retarget_male/retarget_review.webp
             data/qa-inference/retarget_male/retarget_manifest.json
             data/qa-inference/retarget_male/retarget_qa.json
@@ -125,6 +126,7 @@ jobs:
             data/qa-inference/retarget_female/retarget_review.blend
             data/qa-inference/retarget_female/retarget_review.glb
             data/qa-inference/retarget_female/retarget_review.png
+            data/qa-inference/retarget_female/imported_glb_rest.png
             data/qa-inference/retarget_female/retarget_review.webp
             data/qa-inference/retarget_female/retarget_manifest.json
             data/qa-inference/retarget_female/retarget_qa.json
