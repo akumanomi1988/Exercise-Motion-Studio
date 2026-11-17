@@ -35,3 +35,11 @@ Hitos y trabajo futuro: [Issues del repositorio](https://github.com/akumanomi198
 - **[Python CI PASS 32/32](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44109871808)**. Estos tests de contratos NO sustituyen el E2E real.
 - **Inspección de preview:** el sujeto presenta flexión/extensión, pero hay inestabilidad de segmentos y longitud visual. Biomecánica, articulaciones, escala y sincronización aún NO aprobadas.
 - **G0 IN_PROGRESS, G1 IN_PROGRESS. AG0 IN_PROGRESS. G2–G6 NOT_STARTED. G7 BLOCKED.** Ningún avatar hombre/mujer comercial apto incluido; la visualización de landmarks NO es un avatar.
+
+## I1.2 — solver de longitudes + dos GLB de diagnóstico (PR #12)
+
+- Python CI [run 44113258264](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44113258264): **41/41 tests PASS**.
+- E2E con humano real [run 44113258239](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44113258239): PASS técnico, mismo vídeo Commons legalmente atribuido, 47 muestras/46 detecciones; `solved_skeleton.json` generado a partir del `pose_raw.json` con identidad y SHA comprobados.
+- Variación segmental original máxima **44,1919 %**; tras imponer longitudes estables desviación calculada **0 %** (propiedad geométrica, NO validación biomecánica). 86 muestras de segmento de baja visibilidad y cinco saltos de dirección sospechosos (máximo 504,908 grados/s) registrados para revisión.
+- Dos GLB de diagnóstico generados y reimportados en Blender: original 51 objetos animados, intermedio con segmentos fijos 33 objetos animados; ambos con PNG y WebP animados de ocho fotogramas.
+- **G0 y G1 continúan IN_PROGRESS**: falta validación Windows, calibración, biomecánica, retarget real a dos avatares con skinning y T01–T03. AG1 sigue NOT_STARTED. Ningún recurso de diagnóstico está aprobado para producción comercial.
