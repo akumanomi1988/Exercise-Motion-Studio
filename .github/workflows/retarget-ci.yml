@@ -81,6 +81,12 @@ jobs:
               --addon-parent "data/tools/mpfb2-$MPFB_SHA/src" \
               --output-dir "data/generated_avatars/$gender" --variant "$gender"
           done
+          # Dual QA consumes per-avatar qa_report.json produced by Blender QA.
+          for gender in male female; do
+            blender -b --factory-startup --python-exit-code 10 \
+              --python tests/asset/qa_mpfb_avatar.py -- \
+              --asset-dir "data/generated_avatars/$gender"
+          done
           python tests/asset/qa_dual_avatar.py --root data/generated_avatars
       - name: Retarget actual real human motion to BOTH genuine deformable rigs
         run: |
