@@ -9,3 +9,5 @@
 | B-05 | OPEN | Integración con Anvil/Supabase | Requiere autorización separada y plan de rollback |
 
 Continuar tareas independientes; no convertir un bloqueo en PASS.
+| B-06 | OPEN | Modelo/pesos de estimación de pose con hash, versión y licencia de explotación comercial verificados | Seleccionar modelo, documentar condiciones de los pesos y aportar versión fija; no declarar exportación comercial hasta validación |
+| B-07 | OPEN | Pipeline de pose/retarget/GLB aún no implementado y sin tests E2E reales | Continuar I1 con captura temporal, skeleton canónico, rig, Blender y QA visual |
