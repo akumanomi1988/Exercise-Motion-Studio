@@ -64,3 +64,22 @@ El diagnóstico crea `pose_debug.glb` con puntos/segmentos animados reales, `pos
 En [CI real 44109871802](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44109871802), el modelo detectó 46/47 frames de un humano verdadero; Blender exportó y reimportó 51 mallas/acciones animadas, PNG y WebP 8 frames. Las vistas inspeccionadas presentan movimiento visible, pero articulaciones inestables y segmentos no anatómicos: **no aprobar como recurso final**.
 
 El vídeo de RickyBennison conserva CC BY-SA 4.0; cualquier redistribución de derivados debe revisar atribución y ShareAlike. El archivo CI incluye `SOURCE_ATTRIBUTION.txt`, y no publica el MP4/WebM original ni el modelo de Google. Los artefactos CI expiran a los siete días.
+
+## Etapa P-04 parcial: esqueleto intermedio con segmentos de longitud estable
+
+Tras `ems capture`, ejecutar sobre la **misma fuente real**:
+
+```powershell
+python -m ems solve --job-id "<job-id>"
+```
+
+Se exige que `pose_raw.json` coincida con el SHA-256 grabado en el manifest del job, la identidad del vídeo original y que provenga de `method: video_inference_real`; no se mezclan jobs ni se acepta una secuencia de poses fabricada como prueba de ejercicio.
+
+La salida `data/jobs/<job-id>/solved_skeleton.json` contiene **únicamente un esqueleto intermedio**:
+
+- Puntos y cadenas padre/hijo con longitudes estimadas mediante mediana de fotogramas de alta visibilidad (MediaPipe 3D relativo a la cadera; sin calibración absoluta).
+- Posiciones por frame re-proyectadas a esas longitudes; los frames `MISSING` / `AMBIGUOUS` permanecen sin rellenar. Se anotan segmentos con confianza inferior a 0,5.
+- Rotaciones `local_swing_quaternions_xyzw` que aproximan **swing** de la orientación del segmento. Carecen de torsión fiable, perfil de reposo estandarizado/validado, rig de avatar, restricciones articulares completas, IK y contactos. **No utilizar esas rotaciones directamente para publicar un modelo humano.**
+- Métricas de variación de longitud original frente a resuelta y cambio angular entre frames, para determinar si la captura requiere suavizado o revisión.
+
+La normalización de longitud no elimina errores de observación o proyección monocular; tampoco certifica movimiento biomecánico correcto. No se emite `motion.json` canónico final, y `G1` permanece `IN_PROGRESS`. La fuente Commons está amparada por su CC BY-SA 4.0 y sus derivados no pueden tratarse como activos propios sin aplicar las condiciones correspondientes.
