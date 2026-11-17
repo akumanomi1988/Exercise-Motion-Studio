@@ -1,0 +1,56 @@
+name: Real video MediaPipe pose smoke (noncommercial QA)
+
+on:
+  pull_request:
+    paths:
+      - 'src/motion_pipeline/ems/pose.py'
+      - 'src/motion_pipeline/ems/__main__.py'
+      - 'tests/integration/**'
+      - 'requirements-pose.txt'
+      - '.github/workflows/pose-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  actual-human-video-pose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install CPU pose inference dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-pose.txt
+          command -v ffmpeg && command -v ffprobe
+          python -c 'import mediapipe as mp; print("MEDIAPIPE_VERSION", mp.__version__)'
+      - name: Fetch licensed HUMAN exercise reference and versioned Google pose bundle
+        run: |
+          mkdir -p data/qa-inference/models
+          curl --fail --location --retry 3 --max-time 90 \
+            'https://upload.wikimedia.org/wikipedia/commons/1/16/Basic_single_leg_squat.webm' \
+            --output data/qa-inference/real_single_leg_squat.webm
+          curl --fail --location --retry 3 --max-time 120 \
+            'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task' \
+            --output data/qa-inference/models/pose_landmarker_full.task
+          echo 'Reference: RickyBennison, Basic single leg squat, CC BY-SA 4.0'
+          echo 'Model license: Apache 2.0 per https://github.com/google-ai-edge/mediapipe/issues/6306'
+          echo 'Video SHA256:'
+          sha256sum data/qa-inference/real_single_leg_squat.webm
+          echo 'Model SHA256:'
+          sha256sum data/qa-inference/models/pose_landmarker_full.task
+      - name: Run genuine human-video inference and evaluate raw observations
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          MODEL_SHA="$(sha256sum data/qa-inference/models/pose_landmarker_full.task | cut -d' ' -f1)"
+          python tests/integration/smoke_real_pose.py \
+            --video data/qa-inference/real_single_leg_squat.webm \
+            --model data/qa-inference/models/pose_landmarker_full.task \
+            --model-sha256 "$MODEL_SHA"
+      - name: Verify temporary media excluded from distribution
+        run: |
+          git check-ignore -q data/qa-inference/real_single_leg_squat.webm
+          git check-ignore -q data/qa-inference/models/pose_landmarker_full.task
+          echo "Source video and model are local CI files, not published assets."
