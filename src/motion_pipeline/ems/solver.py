@@ -213,7 +213,7 @@ def normalize_pose_observations(raw: dict[str, Any]) -> dict[str, Any]:
             # quality remains explicitly marked for human review.
             if child in prior_dirs:
                 angle = math.degrees(math.acos(max(
-                    -1., min(1., _dot(prior_dirs[child], direction))
+                    -1., min(1., _dot(prior_dirs[child][0], direction))
                 )))
                 maximum_step_degrees = max(maximum_step_degrees, angle)
                 dt_seconds = (timestamp - prior_dirs[child][1]) / 1000.0
