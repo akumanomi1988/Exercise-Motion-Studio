@@ -1,0 +1,62 @@
+name: Olympic barbell procedural 3D build and integrity QA
+
+on:
+  pull_request:
+    paths:
+      - 'src/blender/generate_olympic_barbell.py'
+      - 'tests/asset/qa_olympic_barbell.py'
+      - '.github/workflows/barbell-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actual-barbells:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install real headless Blender and glTF prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends blender python3-numpy python3-pil
+          blender --version | head -n 2
+          blender -b --factory-startup --python-exit-code 10 --python-expr 'import numpy; print(numpy.__version__)'
+      - name: Build unweighted and symmetric loaded Olympic barbells
+        run: |
+          blender -b --factory-startup --python-exit-code 10 \
+            --python src/blender/generate_olympic_barbell.py \
+            -- --output-dir data/generated_assets/barbell-unloaded --plate-mass-kg 20 --plates-per-side 0
+          blender -b --factory-startup --python-exit-code 10 \
+            --python src/blender/generate_olympic_barbell.py \
+            -- --output-dir data/generated_assets/barbell-60kg --plate-mass-kg 20 --plates-per-side 1
+      - name: Reimport both real GLBs and verify annular plates, materials and previews
+        run: |
+          blender -b --factory-startup --python-exit-code 10 \
+            --python tests/asset/qa_olympic_barbell.py \
+            -- --asset-dir data/generated_assets/barbell-unloaded
+          blender -b --factory-startup --python-exit-code 10 \
+            --python tests/asset/qa_olympic_barbell.py \
+            -- --asset-dir data/generated_assets/barbell-60kg
+      - name: Production manifest integrity and fail-closed commercial review
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          for p in data/generated_assets/barbell-unloaded data/generated_assets/barbell-60kg; do
+            python -m ems asset-check --asset-dir "$p"
+            if python -m ems asset-check --asset-dir "$p" --require-commercial; then
+              echo "Asset with pending rights incorrectly permitted commercial distribution" >&2
+              exit 1
+            fi
+          done
+      - name: Retain source, GLB and visual output for inspection (unapproved)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: original-olympic-barbells-technical-unreviewed
+          path: |
+            data/generated_assets/barbell-unloaded/
+            data/generated_assets/barbell-60kg/
+          retention-days: 7
