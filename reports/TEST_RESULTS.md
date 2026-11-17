@@ -58,3 +58,14 @@ Registrar comandos y versiones para Windows 10/11, vídeos reales autorizados, r
 - **GLB original:** 51 mallas/51 acciones, 8 PNG muestreados, WebP ocho frames y 31.708 bytes. **GLB resuelto:** 33 mallas/33 acciones reimportadas con cambios de traslación; 8 renders, WebP ocho frames y 24.280 bytes. Ambos diagnósticos sin avatar humano, sin revisión biomecánica ni licencias comerciales aprobadas.
 - **Artifact original y resuelto:** [14340628838](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44113258239/artifacts/14340628838) (retención 7 días). Incluye `solved_skeleton.json` y `SOURCE_ATTRIBUTION.txt`, además de dos GLB y previews; no incluye vídeo original ni pesos descargados.
 - **Seguridad:** `solved_skeleton.json` se genera sólo sobre captura real coincidente con hash de job y fuente; `review.status = REVIEW_REQUIRED`. T01 bilateral/T02/T03 y dos avatares **no se han ejecutado**; G1 NO aprobado.
+
+## 2026-11-17 — AG1.1: dos humanos CC0 riggeados (PR #13)
+- [CI SUCCESS 44117210502](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44117210502), Blender 5.0.1, MPFB pinned `9de0707fdc88438d7c53a1a2ac7937d9221e2431`.
+- Comandos reales en `.github/workflows/avatar-ci.yml`: Blender headless `build_mpfb_avatars.py --variant male|female`, seguido de `qa_mpfb_avatar.py` por variante y `qa_dual_avatar.py`.
+- Output masculino: 19.158 vértices originales, 53 bones, 3.088.392 bytes GLB, deformación máxima experimental al rotar hueso `head` de 0,222905 m. Femenino: 19.158, 53 bones, GLB 3.088.796 bytes, 0,257208 m. 53 nombres de hueso compartidos, distintas geometrías.
+- Evidencia temporal [artifact 14344455745](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44117210502/artifacts/14344455745); `human_visual_review=PENDING`, `pose_retarget=NOT_TESTED`, `commercial_approval=false`. AG1 IN_PROGRESS.
+
+## 2026-11-17 — AG2.1: barra olímpica, loaded/unloaded (PR #14)
+- [CI SUCCESS 44117688418](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44117688418): Blender ejecutó `generate_olympic_barbell.py` con `--plate-mass-kg 20 --plates-per-side 0` y `1`, y `qa_olympic_barbell.py` sobre ambos `.blend`/`.glb` y PNG.
+- Output real: 20 kg, 7 mallas, envelope `[2.2, 0.078, 0.078]` m; 60 kg, 9 mallas, envelope `[2.2, 0.45, 0.45]` m, orificio anular de discos CHECKED. Imágenes 960x480 con píxeles no uniformes. CI de `ems asset-check --require-commercial` rechaza las dos variantes PENDING correctamente.
+- [Artefacto CI 14343532475](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44117688418/artifacts/14343532475) con GLB, fuentes .blend, previews y QA. `dual_avatar_grips=NOT_TESTED`, sin contacto real ni revisión humana. AG2 IN_PROGRESS, no aprobado.
