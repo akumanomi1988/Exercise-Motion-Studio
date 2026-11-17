@@ -31,6 +31,8 @@ def validate_asset(folder: Path) -> dict:
     assert meta["unit"] == "meter"
     assert meta["licenses"]["status"] == "PENDING"
     assert meta["licenses"]["distribution_approved"] is False
+    assert len(meta["collision_shapes"]) == 3
+    assert len(meta["contact_surfaces"]) == 2
     for name in ("asset.blend", "asset.glb", "preview.png"):
         path = folder / name
         assert path.stat().st_size > 1024, f"asset file too small: {name}"
@@ -85,6 +87,12 @@ def validate_asset(folder: Path) -> dict:
         "commercial_approval": False,
         "note": "One unanimated original equipment asset. No avatar, exercise or motion capture.",
     }
+    meta["qa"]["roundtrip"] = "PASS"
+    meta["qa"]["human_visual_review"] = "PENDING"
+    meta["qa"]["commercial_approval"] = False
+    (folder / "asset.json").write_text(
+        json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
     (folder / "qa_report.json").write_text(
         json.dumps(result, indent=2) + "\n", encoding="utf-8"
     )
