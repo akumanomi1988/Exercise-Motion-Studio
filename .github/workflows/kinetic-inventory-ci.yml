@@ -1,0 +1,88 @@
+name: G5 pinned Kinetic Spanish equipment inventory (metadata only)
+
+on:
+  pull_request:
+    paths:
+      - 'src/motion_pipeline/ems/kinetic.py'
+      - 'src/motion_pipeline/ems/__main__.py'
+      - 'tests/unit/test_kinetic_snapshot.py'
+      - '.github/workflows/kinetic-inventory-ci.yml'
+      - 'reports/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fetch exactly pinned MIT Kinetic Spanish metadata, not media
+        run: |
+          set -euo pipefail
+          source_sha=75d59701c749243f522149d5edd63ec4c6870e5e
+          mkdir -p data/kinetic-snapshot/es data/kinetic-output
+          for name in exercises equipment; do
+            curl --fail --location --retry 3 --max-time 90 \
+              "https://raw.githubusercontent.com/kinetic-place/exercises-db/$source_sha/es/$name.json" \
+              -o "data/kinetic-snapshot/es/$name.json"
+          done
+          curl --fail --location --retry 3 --max-time 30 \
+            "https://raw.githubusercontent.com/kinetic-place/exercises-db/$source_sha/LICENSE" \
+            -o data/kinetic-snapshot/LICENSE
+          python - <<'PY'
+          import hashlib, pathlib
+          file = pathlib.Path("data/kinetic-snapshot/LICENSE")
+          data = file.read_bytes()
+          blob = hashlib.sha1(b"blob "+str(len(data)).encode()+b"\0"+data).hexdigest()
+          assert blob == "e21da3a0430092fe47b93423d250ad2f20b9b0b0", blob
+          assert b"MIT License" in data and b"Copyright (c) 2026 Kinetic.place" in data
+          print("PINNED_KINETIC_DATA_LICENSE_VERIFIED")
+          PY
+      - name: Audit complete real source IDs and equipment references (not fixtures)
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests/unit -p test_kinetic_snapshot.py -v
+          python -m ems kinetic-audit \
+            --exercises data/kinetic-snapshot/es/exercises.json \
+            --equipment data/kinetic-snapshot/es/equipment.json \
+            --output data/kinetic-output/inventory.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          index=json.loads(Path("data/kinetic-output/inventory.json").read_text())
+          assert index["source"]["commit"] == "75d59701c749243f522149d5edd63ec4c6870e5e"
+          assert len(index["exercises"]) == index["exercise_count"] == 908
+          assert len(index["equipment"]) == index["equipment_type_count"] == 44
+          assert index["unmapped_equipment_types"] == 44
+          assert index["approved_exercises"] == 0
+          assert index["g6"] == "NOT_APPROVED"
+          assert not index["source"]["youtube_media_copied"]
+          assert not index["source"]["repdb_imported"]
+          assert all("youtube" not in exercise and "video" not in exercise
+                     for exercise in index["exercises"])
+          assert all("youtube" not in equipment and "video" not in equipment
+                     for equipment in index["equipment"])
+          assert len(set(e["kinetic_exercise_id"] for e in index["exercises"])) == 908
+          assert len(set(e["id"] for e in index["equipment"])) == 44
+          print("REAL_KINETIC_SNAPSHOT_G5_INVENTORY_PASS",
+                "exercises=908","equipment_types=44",
+                "links="+str(index["equipment_association_count"]),
+                "families="+str(index["families"]))
+          PY
+      - name: Preserve verified metadata-only backlog and LICENSE, never videos
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinned-kinetic-908-exercise-44-equipment-metadata-only-PENDING
+          path: |
+            data/kinetic-output/inventory.json
+            data/kinetic-snapshot/LICENSE
+          retention-days: 7
