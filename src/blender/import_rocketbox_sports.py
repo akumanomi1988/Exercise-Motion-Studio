@@ -32,44 +32,69 @@ def sha(path):
 
 
 def attach_color_materials(source):
-    """Explicitly reference supplied upstream images, not generated material."""
-    textures = {name: sorted((source / "Textures").glob("*_" + name + ".tga"))
-                for name in ("body_color", "head_color",
-                             "body_normal", "head_normal")}
+    """Rebuild all externally referenced FBX materials from SHA-pinned TGA.
+
+    The original FBX stores absolute D:\\temp image paths. Importer creates
+    unresolved linked images and the glTF exporter may emit 1x1 placeholders.
+    Preserve actual Microsoft textures by replacing those broken shader nodes,
+    including alpha cutout for the female hair/eyelashes geometry.
+    """
+    texture_dir = source / "Textures"
+    roles = ("body_color", "head_color", "body_normal", "head_normal")
+    textures = {name: sorted(texture_dir.glob("*_" + name + ".tga"))
+                for name in roles}
+    opacity_files = sorted(texture_dir.glob("*_opacity_color.tga"))
     require(all(len(files) == 1 for files in textures.values()),
-            "pinned body/head color and normal textures unavailable")
-    images = {role: bpy.data.images.load(str(files[0]), check_existing=True)
-              for role, files in textures.items()}
+            "original verified body/head color and normal textures missing")
+    require(len(opacity_files) <= 1, "ambiguous opacity image")
+    if opacity_files:
+        textures["opacity_color"] = opacity_files
+    images = {
+        role: bpy.data.images.load(str(files[0]), check_existing=True)
+        for role, files in textures.items()
+    }
     assigned = []
-    materials = sorted(bpy.data.materials, key=lambda m: m.name)
-    for mat in materials:
+    for mat in sorted(bpy.data.materials, key=lambda m: m.name):
         name = mat.name.lower()
-        # Important: don't claim textures assigned when FBX material names
-        # are unrecognized. Classification is audited in output JSON.
-        role = ("head" if any(x in name for x in ("head", "face", "skinhead"))
-                else "body" if any(x in name for x in ("body", "torso", "cloth"))
-                else None)
+        role = ("head" if "head" in name else
+                "body" if "body" in name else
+                "opacity" if "opacity" in name else None)
         if role is None:
-            assigned.append({"name": mat.name, "status": "UNMAPPED"})
+            # Exclude unused Blender utility materials from approval counts.
+            if mat.users:
+                raise ValueError("unrecognized used FBX material: " + mat.name)
+            assigned.append({"name": mat.name, "status": "UNUSED"})
             continue
+        require(role != "opacity" or "opacity_color" in images,
+                "hair/eyelash opacity texture required for this female mesh")
         mat.use_nodes = True
-        bsdf = mat.node_tree.nodes.get("Principled BSDF")
-        if bsdf is None:
-            assigned.append({"name": mat.name, "status": "NO_PRINCIPLED"})
-            continue
-        tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
-        tex.image = images[f"{role}_color"]
-        tex.label = "Microsoft Rocketbox " + role + " color"
+        nodes = mat.node_tree.nodes
+        nodes.clear()  # no unresolved source image paths in final package
+        out = nodes.new("ShaderNodeOutputMaterial")
+        bsdf = nodes.new("ShaderNodeBsdfPrincipled")
+        mat.node_tree.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+        bsdf.inputs["Roughness"].default_value = .82 if role != "opacity" else .75
+        tex = nodes.new("ShaderNodeTexImage")
+        tex.image = images["opacity_color" if role == "opacity" else role+"_color"]
+        tex.label = f"Rocketbox verified {role} texture"
         mat.node_tree.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
-        normal_img = images[f"{role}_normal"]
-        normal_img.colorspace_settings.name = "Non-Color"
-        normal_tex = mat.node_tree.nodes.new("ShaderNodeTexImage")
-        normal_tex.image = normal_img
-        nmap = mat.node_tree.nodes.new("ShaderNodeNormalMap")
-        nmap.inputs["Strength"].default_value = .5
-        mat.node_tree.links.new(normal_tex.outputs["Color"], nmap.inputs["Color"])
-        mat.node_tree.links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
+        if role == "opacity":
+            mat.node_tree.links.new(tex.outputs["Alpha"], bsdf.inputs["Alpha"])
+            if hasattr(mat, "surface_render_method"):
+                mat.surface_render_method = "DITHERED"
+        else:
+            normal_img = images[role+"_normal"]
+            normal_img.colorspace_settings.name = "Non-Color"
+            normal_tex = nodes.new("ShaderNodeTexImage")
+            normal_tex.image = normal_img
+            nmap = nodes.new("ShaderNodeNormalMap")
+            nmap.inputs["Strength"].default_value = .5
+            mat.node_tree.links.new(normal_tex.outputs["Color"], nmap.inputs["Color"])
+            mat.node_tree.links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
         assigned.append({"name": mat.name, "status": role.upper() + "_TEXTURED"})
+    for role, image in images.items():
+        require(image.has_data and min(image.size) >= 1024,
+                "source texture not decoded: " + role)
     return assigned
 
 
