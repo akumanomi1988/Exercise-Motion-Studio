@@ -52,6 +52,19 @@ jobs:
               --source-dir "data/vendor/rocketbox_sports/$variant" \
               --output-dir "data/generated_avatars/rocketbox_sports/$variant"
           done
+      - name: Verify production AssetCatalog accepts hashes but blocks unreviewed commercial distribution
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          set -euo pipefail
+          for variant in male female; do
+            asset="data/generated_avatars/rocketbox_sports/$variant"
+            python -m ems asset-check --asset-dir "$asset"
+            if python -m ems asset-check --asset-dir "$asset" --require-commercial; then
+              echo "ERROR: unapproved human avatar passed commercial gate" >&2
+              exit 1
+            fi
+          done
       - name: Preserve SOURCE assets with MIT notice and technical GLB evidence
         if: always()
         uses: actions/upload-artifact@v4
