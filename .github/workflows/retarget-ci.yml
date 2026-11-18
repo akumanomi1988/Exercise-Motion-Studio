@@ -108,11 +108,12 @@ jobs:
               --output-dir "$root" \
               --solved data/qa-inference/solved_skeleton.json
           done
-      - name: Archive ONLY noncommercial technical derivatives with CC BY-SA attribution
-        if: success()
+      - name: Archive noncommercial QA evidence EVEN WHEN biomechanical tests fail
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: real-human-male-female-skin-retarget-REVIEW-REQUIRED
+          if-no-files-found: warn
           path: |
             data/qa-inference/SOURCE_ATTRIBUTION.txt
             data/qa-inference/solved_skeleton.json
