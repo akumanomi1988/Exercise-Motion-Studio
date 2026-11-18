@@ -38,8 +38,15 @@ BONE_TARGETS = (
     ("calf_r", "rightKnee", "rightAnkle"),
     ("foot_l", "leftAnkle", "leftToe"),
     ("foot_r", "rightAnkle", "rightToe"),
-    ("neck_01", "chest", "nose"),
+    # Nose is an anterior face landmark, not the anatomical neck axis.
+    # Without independent head rotation tracking, let neck follow torso.
+    ("neck_01", "pelvis", "chest"),
 )
+# Progressive per-stage aim fractions: distribute captured torso swing over
+# three anatomically linked spinal bones, instead of hinging the full torso
+# exclusively at the lumbar root. Each stage finishes 1/3 of total swing.
+_SPINE_BLEND = {"spine_01": 1. / 3., "spine_02": 1. / 2.,
+                "spine_03": 1.}
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
 
 
@@ -414,6 +421,18 @@ def generate(source: Path, avatar: Path, output: Path,
                 # do NOT clamp it from the avatar's unrelated bind rest.
                 last_safe_dirs[name] = expected
                 last_safe_timestamps[name] = t
+            if name in _SPINE_BLEND:
+                # The current bone direction includes the preceding parent
+                # swing. Progressively aim one third of the remaining torso
+                # angle in each spinal segment. No synthetic observation is
+                # introduced: the shared desired orientation comes from
+                # the same real MediaPipe pelvis->chest measurement.
+                current_spine = direction(posebone.head, posebone.tail)
+                angle_to_target = current_spine.angle(expected)
+                if angle_to_target > 1e-6:
+                    expected = current_spine.slerp(
+                        expected, _SPINE_BLEND[name]
+                    ).normalized()
             err, twist_err = _set_global_direction(posebone, expected)
             peak_angular_error = max(peak_angular_error, err)
             peak_twist_error = max(peak_twist_error, twist_err)
@@ -513,6 +532,8 @@ def generate(source: Path, avatar: Path, output: Path,
         "rig_bones": len(rig.data.bones),
         "animated_bones": len(BONE_TARGETS),
         "method": "REAL_CAPTURE_SEGMENT_DIRECTION_RETARGET",
+        "spine_swing_strategy": "PROGRESSIVE_THREE_SEGMENT_ALLOCATION",
+        "head_orientation": "NOT_OBSERVED_NECK_FOLLOWS_TORSO",
         "strategy": "SHARED_BASIS_OBSERVED_DIRECTIONS_UNCALIBRATED",
         "reference_timestamp_ms": reference["timestamp_ms"],
         "reference_selection": "MOST_UPRIGHT_OBSERVED_CAMERA_ALIGNMENT_ONLY",
