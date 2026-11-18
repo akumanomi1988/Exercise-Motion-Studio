@@ -45,7 +45,93 @@ def skin_sample(mesh, rig, frame):
         evaluated.to_mesh_clear()
 
 
-def inspect(folder: Path):
+
+def measured_kinematic_fidelity(rig, solved, report):
+    """Independently compare original solved REAL-video joint angles with the
+    exported GLB's animated pose bones after roundtrip. This is a screening
+    test, not evidence of absolute scene/pose or commercial correctness."""
+    require(hash_path(solved) == report["solved_skeleton_sha256"],
+            "QA must use the exact source solved skeleton of this GLB")
+    raw = json.loads(solved.read_text(encoding="utf-8"))
+    require(raw.get("data_type") == "INTERMEDIATE_SKELETON_NOT_FINAL_MOTION",
+            "joint QA requires real intermediate skeleton provenance")
+    frames = raw["frames"]
+    first_ms = frames[0]["timestamp_ms"]
+    joints = (
+        ("leftElbow", "leftShoulder", "leftElbow", "leftWrist",
+         "upperarm_l", "lowerarm_l"),
+        ("rightElbow", "rightShoulder", "rightElbow", "rightWrist",
+         "upperarm_r", "lowerarm_r"),
+        ("leftKnee", "leftHip", "leftKnee", "leftAnkle",
+         "thigh_l", "calf_l"),
+        ("rightKnee", "rightHip", "rightKnee", "rightAnkle",
+         "thigh_r", "calf_r"),
+    )
+    fps = report["sample_fps"]
+    limit_deg = 15.0  # screening threshold only, NOT a tuned approval gate
+    errors = []
+    alerts = []
+    per_joint = {group[0]: [] for group in joints}
+    for sample in frames:
+        if sample.get("state") != "SOLVED_REVIEW_REQUIRED":
+            continue
+        frame_no = 1 + round((sample["timestamp_ms"] - first_ms) * fps / 1000)
+        require(1 <= frame_no <= report["timeline_end_frame"],
+                "solved timestamp does not match GLB animation timeline")
+        bpy.context.scene.frame_set(frame_no)
+        bpy.context.view_layer.update()
+        omitted = {x["segment"] for x in sample.get("unreliable_segments", [])}
+        xyz = sample["joints"]
+        for key, parent, middle, child, bone_a, bone_b in joints:
+            if middle in omitted or child in omitted:
+                continue
+            source_upper = Vector(xyz[middle]) - Vector(xyz[parent])
+            source_lower = Vector(xyz[child]) - Vector(xyz[middle])
+            require(source_upper.length > .00001 and source_lower.length > .00001,
+                    "degenerate real source joint under angular QA")
+            source_angle = math.degrees(source_upper.angle(source_lower))
+            upper = rig.pose.bones[bone_a]
+            lower = rig.pose.bones[bone_b]
+            actual_upper = upper.tail - upper.head
+            actual_lower = lower.tail - lower.head
+            require(actual_upper.length > .00001 and actual_lower.length > .00001,
+                    "degenerate exported GLB joint geometry")
+            output_angle = math.degrees(actual_upper.angle(actual_lower))
+            error = abs(output_angle - source_angle)
+            require(math.isfinite(error), "nonfinite reimported GLB joint angle")
+            errors.append(error)
+            per_joint[key].append(error)
+            if error > limit_deg:
+                alerts.append({
+                    "timestamp_ms": sample["timestamp_ms"],
+                    "joint": key,
+                    "source_flexion_degrees": round(source_angle, 3),
+                    "glb_flexion_degrees": round(output_angle, 3),
+                    "error_degrees": round(error, 3),
+                })
+    require(len(errors) >= 12,
+            "insufficient visible real elbow/knee observations for GLB QA")
+    return {
+        "status": "FAIL_REVIEW_REQUIRED" if alerts else "SCREENING_PASS_NOT_FINAL_QA",
+        "screening_limit_degrees": limit_deg,
+        "observed_joint_frame_pairs": len(errors),
+        "max_flexion_error_degrees": round(max(errors), 4),
+        "mean_flexion_error_degrees": round(sum(errors)/len(errors), 4),
+        "joint_max_error_degrees": {
+            key: round(max(samples), 4) if samples else None
+            for key, samples in per_joint.items()
+        },
+        "review_event_count": len(alerts),
+        "review_events_first_25": alerts[:25],
+        "provenance": "SOURCE_SOLVED_SKELETON_VERSUS_GLTF_REIMPORTED_SKIN",
+        "limitations": "No absolute root, depth certainty, contact, twist, collision or visual approval",
+    }
+
+
+def hash_path(path):
+    return sha(path)
+
+def inspect(folder: Path, solved: Path):
     report = json.loads((folder / "retarget_manifest.json").read_text(
         encoding="utf-8"
     ))
@@ -120,6 +206,11 @@ def inspect(folder: Path):
     require(max_mesh_displacement > .008,
             f"animated GLB has no genuine skin motion: {max_mesh_displacement}")
 
+    # Check actual GLB joint flexion against original captured 3D directions.
+    # This catches per-bone neutralization corrupting elbow/knee articulation
+    # even when vertex animation, skins and GLB roundtrip technically pass.
+    kinematic_fidelity = measured_kinematic_fidelity(rig, solved, report)
+
     # Opening a different .blend destroys Blender RNA object references.
     # Retain scalar GLB evidence BEFORE that operation.
     glb_bones = len(rig.data.bones)
@@ -141,6 +232,7 @@ def inspect(folder: Path):
         "glb_bones": glb_bones,
         "glb_skin_weights": glb_skin_weights,
         "real_mesh_deformation_span_m": round(max_mesh_displacement, 6),
+        "kinematic_fidelity": kinematic_fidelity,
         "human_visual_review": "PENDING",
         "biomechanics_review": "PENDING",
         "commercial_approval": False,
@@ -156,5 +248,6 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     p.add_argument("--output-dir", type=Path, required=True)
+    p.add_argument("--solved", type=Path, required=True)
     a = p.parse_args(args)
-    inspect(a.output_dir.resolve(strict=True))
+    inspect(a.output_dir.resolve(strict=True), a.solved.resolve(strict=True))
