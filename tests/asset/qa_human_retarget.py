@@ -111,8 +111,14 @@ def frame_from_capture(source_frame, report, *, origin_seconds=0.0):
             "invalid imported scene timebase")
     require(math.isfinite(origin_seconds) and 0 <= origin_seconds < .5,
             "invalid animation start offset")
-    return 1 + round(((source_frame - 1) / original_fps +
+    if origin_seconds > 0.0:
+        # glTF timestamps map to Blender frame = round(seconds * fps);
+        # Blender frame indices are already 1-based at the source. Adding
+        # 1 here was a one-frame phase shift after import (bone angles
+        # and grounded-toe positions were measured at the wrong instant).
+        return round(((source_frame - 1) / original_fps +
                       origin_seconds) * current_fps)
+    return 1 + round((source_frame - 1) * current_fps / original_fps)
 
 
 def measured_joint_attachment(rig, last_frame):
@@ -408,6 +414,9 @@ def inspect(folder: Path, solved: Path):
         report["timeline_end_frame"], report,
         origin_seconds=glb_origin_seconds
     )
+    glb_first_frame = frame_from_capture(
+        1, report, origin_seconds=glb_origin_seconds
+    )
     joint_attachment = measured_joint_attachment(rig, imported_end)
 
     # Evaluate REAL deformed vertices of the SKINNED MESH, not root translations
@@ -478,9 +487,7 @@ def inspect(folder: Path, solved: Path):
         "editable_blend_scene_fps": blend_scene_fps,
         "time_sampling_basis": "GLTF_ACCESSOR_START_SECONDS_AND_SCENE_FPS",
         "glb_first_animation_key_seconds": round(glb_origin_seconds, 7),
-        "glb_first_animation_frame": frame_from_capture(
-            1, report, origin_seconds=glb_origin_seconds
-        ),
+        "glb_first_animation_frame": glb_first_frame,
         "kinematic_fidelity": kinematic_fidelity,
         "editable_blend_kinematic_fidelity": blend_fidelity,
         "max_joint_flexion_export_drift_degrees": round(
