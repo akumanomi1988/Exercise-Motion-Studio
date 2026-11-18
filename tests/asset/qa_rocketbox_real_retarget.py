@@ -349,6 +349,83 @@ def measure_vertical_support(
                          bpy.context.scene.render.fps_base}
 
 
+def measure_inferred_toe_xy_lock(
+    rig, anchors, report, *, origin_seconds=0.0
+):
+    """Independent XYZ-contact-hypothesis check after real GLB reimport.
+
+    Only explicitly declared/visible source-ground hypotheses count. Holds,
+    alternations and unknown floor contact do not count as valid samples.
+    A locked joint must match its constant source-anchor in WORLD metres,
+    not just remain stationary in parent armature coordinates.
+    """
+    require(report.get("foot_support_strategy") ==
+            "DOMINANT_TOE_XYZ_HYPOTHESIS_WITH_VERTICAL_FALLBACK",
+            "wrong source contact hypothesis contract")
+    inference = report.get("support_inference", {})
+    support_foot = report.get("inferred_support_foot")
+    anchor = report.get("inferred_toe_anchor_world_xyz_m")
+    require(inference.get("ground_truth_contact") is False,
+            "source toes cannot certify observed ground truth")
+    require((support_foot is None and anchor is None) or
+            (support_foot in {"Bip01 L Foot", "Bip01 R Foot"} and
+             isinstance(anchor, list) and len(anchor) == 3 and
+             all(type(x) in (int, float) and math.isfinite(x) for x in anchor)),
+            "invalid support foot or anchor")
+    require(all(item.get("hypothesis_not_ground_truth") is True
+                for item in anchors), "support evidence misrepresents certainty")
+    if support_foot is None:
+        require(not any(a.get("support_lock_valid") for a in anchors),
+                "ambiguous input must not silently create contact")
+        return {"status": "AMBIGUOUS_REVIEW_REQUIRED",
+                "checked_locked_frames": 0, "max_xy_contact_drift_m": None,
+                "ground_truth_contact": False}
+    target = Vector(anchor)
+    errors = []
+    worst = None
+    for sample in anchors:
+        if not sample.get("support_lock_valid"):
+            continue
+        require(sample.get("inferred_support_toe") == support_foot
+                and sample.get("valid") is True
+                and sample.get("observed_feet") == [support_foot],
+                "locked support provenance differs from observed foot")
+        source_frame = sample["frame"]
+        bpy.context.scene.frame_set(frame_from_capture(
+            source_frame, report, origin_seconds=origin_seconds
+        ))
+        bpy.context.view_layer.update()
+        current_world = (
+            rig.matrix_world @
+            rig.pose.bones[JOINT_ENDPOINT[support_foot]].head
+        )
+        xy_drift = math.hypot(
+            current_world.x - target.x,
+            current_world.y - target.y,
+        )
+        require(math.isfinite(xy_drift),
+                "nonfinite world support-toe distance")
+        errors.append(xy_drift)
+        if worst is None or xy_drift > worst["distance_m"]:
+            worst = {"source_frame": source_frame,
+                     "distance_m": round(xy_drift, 8)}
+    require(len(errors) == report["inferred_support_locked_frames"],
+            "lost or fabricated actual locked frame count")
+    require(len(errors) >= 3,
+            "dominant toe lock had no genuine observed support")
+    worst_error = max(errors)
+    require(worst_error <= .03,
+            "inferred grounded toe GLB X/Y drift exceeds 3cm: " +
+            str(worst))
+    return {
+        "status": "TECHNICAL_INFERRED_TOE_LOCK_PASS_NOT_TRUE_CONTACT",
+        "checked_locked_frames": len(errors),
+        "max_xy_contact_drift_m": round(worst_error, 8),
+        "worst": worst,
+        "ground_truth_contact": False,
+    }
+
+
 def evaluate_real_mesh_camera_coverage(report):
     """Inspect the exact animated .blend skinned verts against saved camera.
 
@@ -458,6 +535,35 @@ def inspect(folder: Path, solved: Path):
                                for v in sample_pixels[i:i + 3]))
     require(len(count_colors) > 10, "blank/noninformative diagnostic image")
 
+    views = report.get("real_motion_multiview_review")
+    require(isinstance(views, dict)
+            and set(views) == {"front", "side", "three_quarter"},
+            "three independent real-human camera reviews not rendered")
+    review_digests = []
+    for angle, data in views.items():
+        file = folder / ("review_" + angle + ".png")
+        require(data.get("file") == file.name
+                and data.get("actual_skeleton_source") ==
+                    "SAME_REAL_CAPTURED_CLIP",
+                "review source provenance not tied to actual motion")
+        require(data.get("sample_frame") in
+                report["actual_motion_camera_framing"]["frames"],
+                "multiview is not a sampled real source frame")
+        require(file.is_file() and file.stat().st_size > 10_000
+                and sha(file) == report["file_sha256"][file.name],
+                "missing/tampered real Blender 3-angle preview")
+        review_digests.append(sha(file))
+        frame_image = bpy.data.images.load(str(file), check_existing=False)
+        require(tuple(frame_image.size) == (512, 768),
+                "incorrect multiview review dimensions")
+        sample = frame_image.pixels
+        step = max(4, (len(sample) // 700 // 4) * 4)
+        colors = {tuple(round(float(x), 2) for x in sample[i:i+3])
+                  for i in range(0, len(sample)-3, step)}
+        require(len(colors) > 10, "blank rendered multiview " + angle)
+    require(len(set(review_digests)) == 3,
+            "three nominal views are not different camera projections")
+
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
     glb_origin_seconds = glb_first_animation_key_seconds(
@@ -493,8 +599,8 @@ def inspect(folder: Path, solved: Path):
     require(type(floor_z) in (int, float) and math.isfinite(floor_z),
             "invalid original rest-toe reference")
     require(report.get("foot_support_strategy") ==
-            "VISIBLE_LOWEST_TOE_JOINT_VERTICAL_ONLY_UNCALIBRATED",
-            "unexpected ground-relative strategy")
+            "DOMINANT_TOE_XYZ_HYPOTHESIS_WITH_VERTICAL_FALLBACK",
+            "unexpected source-to-ground hypothesis")
     require(report.get("full_body_ik") == "NOT_IMPLEMENTED" and
             report["commercial_approval"] is False,
             "toe anchoring cannot establish complete contact or IK")
@@ -504,6 +610,9 @@ def inspect(folder: Path, solved: Path):
     )
     maximum_floor_error = glb_support["max_error_m"]
     validated_support_frames = glb_support["observed_frames"]
+    glb_toe_lock = measure_inferred_toe_xy_lock(
+        rig, anchors, report, origin_seconds=glb_origin_seconds
+    )
 
     imported_scene_fps = (
         bpy.context.scene.render.fps / bpy.context.scene.render.fps_base
@@ -563,6 +672,9 @@ def inspect(folder: Path, solved: Path):
     blend_support = measure_vertical_support(
         edits[0], anchors, report, floor_z
     )
+    blend_toe_lock = measure_inferred_toe_xy_lock(
+        edits[0], anchors, report
+    )
     blend_fidelity = measured_kinematic_fidelity(edits[0], solved, report)
     require(blend_fidelity["observed_joint_frame_pairs"] ==
             kinematic_fidelity["observed_joint_frame_pairs"],
@@ -574,6 +686,7 @@ def inspect(folder: Path, solved: Path):
     result = {
         "technical_skinned_retarget": "PASS",
         "full_body_camera_coverage": camera_coverage,
+        "real_motion_three_view_technical": "PASS_FRAMES_NOT_HUMAN_APPROVAL",
         "variant": report["variant"],
         "source_frames": report["source_frames"],
         "actual_detected_frames": report["detected_frames"],
@@ -604,6 +717,17 @@ def inspect(folder: Path, solved: Path):
         ),
         "glb_vertical_support": glb_support,
         "blend_vertical_support": blend_support,
+        "glb_inferred_toe_xy_lock": glb_toe_lock,
+        "blend_inferred_toe_xy_lock": blend_toe_lock,
+        "root_velocity_screening": {
+            "status": "REVIEW_REQUIRED" if report.get(
+                "root_speed_review_events") else "NO_OUTLIERS_OBSERVED",
+            "max_m_per_second": report.get(
+                "maximum_inferred_root_speed_m_s"),
+            "review_event_count": len(report.get(
+                "root_speed_review_events", [])),
+            "ground_truth_root_motion": False,
+        },
         "vertical_support_observed_frames": validated_support_frames,
         "vertical_support_held_frames": report["support_frames_held"],
         "maximum_vertical_foot_anchor_error_m": round(maximum_floor_error, 7),

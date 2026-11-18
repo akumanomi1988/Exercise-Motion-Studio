@@ -207,6 +207,69 @@ class ReviewQueueContractTests(unittest.TestCase):
             self.inspect()
 
 
+    def enable_inferred_contact(self):
+        self.enable_rocketbox_head_qa()
+        for folder in (self.male, self.female):
+            p = folder / "retarget_manifest.json"
+            meta = json.loads(p.read_text())
+            meta.update({
+                "foot_support_strategy":
+                    "DOMINANT_TOE_XYZ_HYPOTHESIS_WITH_VERTICAL_FALLBACK",
+                "support_inference": {
+                    "ground_truth_contact": False,
+                    "dominant_side": "right",
+                    "eligible_samples": 2,
+                },
+                "inferred_support_foot": "Bip01 R Foot",
+                "inferred_support_locked_frames": 2,
+                "root_speed_review_events": [{
+                    "timestamp_ms": 200,
+                    "root_speed_m_s": 2.2,
+                    "reason": "INFERRED_ROOT_STEP_REVIEW_REQUIRED",
+                }],
+            })
+            self.save(p, meta)
+            q = folder / "retarget_qa.json"
+            qa = json.loads(q.read_text())
+            qa["glb_inferred_toe_xy_lock"] = {
+                "status": "TECHNICAL_INFERRED_TOE_LOCK_PASS_NOT_TRUE_CONTACT",
+                "checked_locked_frames": 2,
+                "max_xy_contact_drift_m": 0.00001,
+                "ground_truth_contact": False,
+            }
+            self.save(q, qa)
+
+    def test_inferred_support_never_masquerades_as_real_contact(self):
+        self.enable_inferred_contact()
+        queue = self.inspect()
+        self.assertEqual(queue["release_gate"], "BLOCKED")
+        self.assertEqual(len([
+            issue for issue in queue["issues"]
+            if issue["kind"] == "UNVERIFIED_MONOCULAR_GROUND_SUPPORT"
+        ]), 2)
+        self.assertEqual(len([
+            issue for issue in queue["issues"]
+            if issue["kind"] == "ROOT_CONTACT_VELOCITY_OUTLIER"
+        ]), 2)
+
+    def test_inferred_support_rejects_false_qa_world_drift(self):
+        self.enable_inferred_contact()
+        q = self.female / "retarget_qa.json"
+        qa = json.loads(q.read_text())
+        qa["glb_inferred_toe_xy_lock"]["max_xy_contact_drift_m"] = 0.051
+        self.save(q, qa)
+        with self.assertRaisesRegex(InputValidationError, "3cm"):
+            self.inspect()
+
+    def test_inferred_support_root_event_requires_real_source_timestamp(self):
+        self.enable_inferred_contact()
+        p = self.female / "retarget_manifest.json"
+        meta = json.loads(p.read_text())
+        meta["root_speed_review_events"][0]["timestamp_ms"] = 9000
+        self.save(p, meta)
+        with self.assertRaisesRegex(InputValidationError, "source frame"):
+            self.inspect()
+
 
 if __name__ == "__main__":
     unittest.main()

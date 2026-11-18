@@ -245,6 +245,69 @@ def compile_real_video_review(male_dir: str | Path, female_dir: str | Path,
                     "limit_degrees": threshold,
                     "observed_source": "SOLVED_REVIEW_REQUIRED",
                 }))
+        # Contact from a SINGLE camera is a hypothesis. Root spikes and
+        # uncertain support are explicit blockable review events even when
+        # glTF faithfully preserves the artificially stabilized toe.
+        if manifest.get("foot_support_strategy") == (
+            "DOMINANT_TOE_XYZ_HYPOTHESIS_WITH_VERTICAL_FALLBACK"
+        ):
+            inference = manifest.get("support_inference", {})
+            _require(inference.get("ground_truth_contact") is False,
+                     "monocular toe inference cannot claim ground truth")
+            locked = manifest.get("inferred_support_locked_frames")
+            _require(type(locked) is int and 0 <= locked <= len(frames),
+                     "invalid inferred support frame count")
+            support_qa = report.get("glb_inferred_toe_xy_lock", {})
+            _require(support_qa.get("ground_truth_contact") is False,
+                     "GLB support QA cannot assert certified contact")
+            _require(support_qa.get("status") in {
+                "TECHNICAL_INFERRED_TOE_LOCK_PASS_NOT_TRUE_CONTACT",
+                "AMBIGUOUS_REVIEW_REQUIRED",
+            }, "missing GLB 3D support measurement")
+            _require(support_qa.get("checked_locked_frames") == locked,
+                     "GLB toe-lock count differs from source manifest")
+            if locked:
+                displacement = _number(
+                    support_qa.get("max_xy_contact_drift_m"),
+                    "GLB support XY drift")
+                _require(displacement <= .03,
+                         "toe lock exceeds 3cm despite reported support PASS")
+            events = manifest.get("root_speed_review_events")
+            _require(isinstance(events, list),
+                     "root velocity event list missing")
+            all_foot = manifest.get("inferred_support_foot")
+            _require(all_foot is None or all_foot in
+                     {"Bip01 L Foot", "Bip01 R Foot"},
+                     "invalid inferred ankle/toe lineage")
+            issues.append(_issue(issue_source_id, variant,
+                "UNVERIFIED_MONOCULAR_GROUND_SUPPORT", "inferred_ground", {
+                    "inferred_foot": all_foot,
+                    "locked_frames": locked,
+                    "eligible_observations": inference.get("eligible_samples"),
+                    "true_ground_contact": False,
+                    "pose_confidence_is_not_contact_certification": True,
+                }))
+            for event in events:
+                _require(isinstance(event, dict),
+                         "invalid source-root speed event")
+                timestamp_ms = event.get("timestamp_ms")
+                _require(type(timestamp_ms) is int
+                         and timestamp_ms in stamps,
+                         "root velocity event has no corresponding source frame")
+                speed = _number(event.get("root_speed_m_s"),
+                                "computed root-speed screen")
+                _require(speed > 1.5 and
+                         event.get("reason") ==
+                         "INFERRED_ROOT_STEP_REVIEW_REQUIRED",
+                         "unsupported root-speed review event")
+                issues.append(_issue(issue_source_id, variant,
+                    "ROOT_CONTACT_VELOCITY_OUTLIER",
+                    str(timestamp_ms), {
+                        "timestamp_ms": timestamp_ms,
+                        "inferred_root_speed_m_s": speed,
+                        "screening_threshold_m_s": 1.5,
+                        "ground_truth_root_motion": False,
+                    }))
         issues.append(_issue(issue_source_id, variant, "HUMAN_VISUAL_REVIEW_PENDING",
                              "visual", {"state": "PENDING"}))
         issues.append(_issue(issue_source_id, variant, "COMMERCIAL_RIGHTS_UNAPPROVED",
