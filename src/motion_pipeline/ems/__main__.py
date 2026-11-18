@@ -11,6 +11,7 @@ from ems.jobs import register_source
 from ems.media import probe_registered_video
 from ems.pose import capture_registered_video
 from ems.solver import solve_registered_capture
+from ems.review_queue import write_real_video_review
 from ems.rights import ALLOWED_RIGHTS_BASES, InputValidationError
 
 
@@ -52,6 +53,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     solve.add_argument("--job-id", required=True)
     solve.add_argument("--jobs-dir", default="data/jobs")
+    review = sub.add_parser(
+        "review-queue",
+        help="Build fail-closed real-video dual-avatar review issues; never approve media",
+    )
+    review.add_argument("--male-dir", required=True)
+    review.add_argument("--female-dir", required=True)
+    review.add_argument("--solved", required=True, help="Exact solved_skeleton.json")
+    review.add_argument("--output", required=True)
     return parser
 
 
@@ -89,6 +98,11 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "solve":
             result = solve_registered_capture(
                 job_id=args.job_id, jobs_dir=args.jobs_dir
+            )
+        elif args.command == "review-queue":
+            result = write_real_video_review(
+                male_dir=args.male_dir, female_dir=args.female_dir,
+                solved_path=args.solved, output_path=args.output,
             )
         else:
             raise InputValidationError("unsupported command")
