@@ -81,6 +81,46 @@ class CatalogManifestTests(unittest.TestCase):
         with self.assertRaisesRegex(InputValidationError, "unit vector"):
             inspect_asset_folder(self.asset)
 
+    def test_accepts_parametric_pad_box_with_unit_quaternion(self):
+        self.meta["collision_shapes"].append({
+            "shape": "box", "id": "bench_pad",
+            "center_m": [0, 0, .5], "size_m": [.34, .92, .08],
+            "rotation_xyzw": [0, 0, 0, 1],
+        })
+        self.save()
+        self.assertEqual(inspect_asset_folder(self.asset)["status"],
+                         "MANIFEST_INTEGRITY_PASS")
+
+    def test_rejects_nonpositive_pad_dimensions(self):
+        self.meta["collision_shapes"] = [{
+            "shape": "box", "center_m": [0, 0, .5],
+            "size_m": [.34, -.92, .08],
+            "rotation_xyzw": [0, 0, 0, 1],
+        }]
+        self.save()
+        with self.assertRaisesRegex(InputValidationError, "positive"):
+            inspect_asset_folder(self.asset)
+
+    def test_rejects_nonunit_box_rotation(self):
+        self.meta["collision_shapes"] = [{
+            "shape": "box", "center_m": [0, 0, .5],
+            "size_m": [.34, .92, .08],
+            "rotation_xyzw": [0, 0, 0, 2],
+        }]
+        self.save()
+        with self.assertRaisesRegex(InputValidationError, "unit quaternion"):
+            inspect_asset_folder(self.asset)
+
+    def test_rejects_nonfinite_box_rotation(self):
+        self.meta["collision_shapes"] = [{
+            "shape": "box", "center_m": [0, 0, .5],
+            "size_m": [.34, .92, .08],
+            "rotation_xyzw": [float("nan"), 0, 0, 1],
+        }]
+        self.save()
+        with self.assertRaisesRegex(InputValidationError, "finite quaternion"):
+            inspect_asset_folder(self.asset)
+
     def test_duplicate_catalog_id_fails(self):
         other = self.root / "other"
         other.mkdir()
