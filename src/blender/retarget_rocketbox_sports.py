@@ -136,6 +136,39 @@ def infer_alignment(frames: list[dict], rig) -> Matrix:
     return transform
 
 
+def infer_dominant_support_foot(frames: list[dict]) -> dict:
+    """Infer a review-only stance candidate from actual observed toe heights.
+
+    Hip-relative monocular landmarks cannot prove ground contact. Require a
+    consistent majority of visible samples before using a stable horizontal
+    anchor. Ambiguous/missing evidence must fall back to vertical-only review.
+    """
+    counts = {"left": 0, "right": 0}
+    for sample in frames:
+        unavailable = {item["segment"] for item in
+                       sample.get("unreliable_segments", [])}
+        if {"leftToe", "rightToe", "leftAnkle", "rightAnkle"} & unavailable:
+            continue
+        joints = sample["joints"]
+        left_y = joints["leftToe"][1]
+        right_y = joints["rightToe"][1]
+        if abs(left_y - right_y) < .035:
+            continue
+        counts["left" if left_y < right_y else "right"] += 1
+    total = counts["left"] + counts["right"]
+    dominant = max(counts, key=counts.get)
+    ratio = counts[dominant] / total if total else 0.0
+    return {
+        "status": ("INFERRED_REVIEW_REQUIRED" if
+                   total >= 8 and ratio >= .70 else "AMBIGUOUS_NO_XY_LOCK"),
+        "dominant_side": dominant if total >= 8 and ratio >= .70 else None,
+        "confidence_fraction_of_visible_lower_toes": round(ratio, 6),
+        "eligible_samples": total,
+        "votes": counts,
+        "ground_truth_contact": False,
+    }
+
+
 def choose_reference(frames: list[dict]) -> dict:
     """Select a measured relatively upright pose as zero-swing calibration.
 
@@ -475,7 +508,27 @@ def generate(source: Path, avatar: Path, output: Path,
     )
     require(max_rest_model_segment_m < .8,
             "world-meter segment head-to-child scale invalid: " + str(max_rest_model_segment_m))
-    previous_root_z = 0.0
+    support_inference = infer_dominant_support_foot(captured)
+    support_side = support_inference["dominant_side"]
+    support_foot = {
+        "left": "Bip01 L Foot", "right": "Bip01 R Foot",
+    }.get(support_side)
+    # All world distances here are metres via rig.matrix_world. A dominant
+    # support toe is an explicit HYPOTHESIS, never proof of actual floor.
+    stable_toe_world = None
+    if support_foot:
+        stable_toe_world = (
+            rig.matrix_world @
+            rig.pose.bones[JOINT_ENDPOINT[support_foot]].head
+        ).copy()
+        stable_toe_world.z = rest_foot_floor_z
+    previous_root = Vector((0.0, 0.0, 0.0))
+    root_xy_samples = []
+    maximum_root_step_m = 0.0
+    previous_sample_ms = None
+    root_speed_alerts = []
+    maximum_root_speed_m_s = 0.0
+    support_lock_frames = 0
     support_anchors = []
     support_held_frames = 0
     maximum_root_vertical_displacement = 0.0
@@ -505,7 +558,7 @@ def generate(source: Path, avatar: Path, output: Path,
         scene.frame_set(fno)
         # Prevent last frame's animated root transform from contaminating
         # the next frame's local ground-relative estimate.
-        rig.location.z = 0.0
+        rig.location = (0, 0, 0)
         for posebone, _, _ in mapped:
             posebone.rotation_mode = "QUATERNION"
             posebone.rotation_quaternion = (1, 0, 0, 0)
@@ -569,42 +622,85 @@ def generate(source: Path, avatar: Path, output: Path,
             )
             peak_angular_error = max(peak_angular_error, err)
             peak_twist_error = max(peak_twist_error, twist_err)
-        # The lower VISIBLE toe approximates a support anchor; when both toes
-        # are occluded or the frame is absent, HOLD the previous estimate.
-        # This does not solve horizontal foot locks or prove actual contact.
+        # Dominant support from real visible toe heights: solve full XYZ root
+        # so its anatomical toe joint remains stationary in WORLD metres.
+        # If that toe is not observably lower, HOLD XY and fall back to
+        # lowest-visible-toe vertical placement; never forge a contact.
         good_feet = []
-        if sample.get("state") == "SOLVED_REVIEW_REQUIRED":
+        if observed_now:
             if not ({"leftToe", "leftAnkle"} & unreliable):
                 good_feet.append("Bip01 L Foot")
             if not ({"rightToe", "rightAnkle"} & unreliable):
                 good_feet.append("Bip01 R Foot")
         bpy.context.view_layer.update()
-        if good_feet:
+        lock_visible = (
+            bool(support_foot) and support_foot in good_feet
+            and len(good_feet) == 2
+            and last_observed["joints"][support_side+"Toe"][1]
+                <= last_observed["joints"][
+                    ("left" if support_side == "right" else "right")+"Toe"
+                ][1] + .035
+        )
+        root = previous_root.copy()
+        if lock_visible:
+            current_world_toe = (
+                rig.matrix_world @
+                rig.pose.bones[JOINT_ENDPOINT[support_foot]].head
+            )
+            root = stable_toe_world - current_world_toe
+            support_lock_frames += 1
+            # Ground locking is an inferred source-ground model, not full IK.
+            observed_feet = [support_foot]
+        elif good_feet:
             lowest_toe_z = min(
-                (rig.matrix_world @ rig.pose.bones[JOINT_ENDPOINT[name]].head).z
+                (rig.matrix_world @
+                 rig.pose.bones[JOINT_ENDPOINT[name]].head).z
                 for name in good_feet
             )
-            previous_root_z = rest_foot_floor_z - lowest_toe_z
-            maximum_root_vertical_displacement = max(
-                maximum_root_vertical_displacement, abs(previous_root_z)
-            )
+            root.z = rest_foot_floor_z - lowest_toe_z
+            observed_feet = good_feet
         else:
             support_held_frames += 1
-        if fno in (1, 10, 25, 46):
-            rig_space_diagnostic("AFTER_SWING_BEFORE_ROOT", fno)
-            print("EMS_G1_ROOT_SUPPORT_DEBUG=" + json.dumps({
-                "frame": fno, "root_vertical_m": previous_root_z,
-                "support_feet": good_feet,
-                "rest_floor": rest_foot_floor_z,
-            }))
-        rig.location.z = previous_root_z
+            observed_feet = []
+        step = (root - previous_root).length
+        maximum_root_step_m = max(maximum_root_step_m, step)
+        if previous_sample_ms is not None:
+            dt_s = (t - previous_sample_ms) / 1000
+            require(dt_s > 0.0, "invalid support root sample interval")
+            speed_m_s = step / dt_s
+            maximum_root_speed_m_s = max(maximum_root_speed_m_s, speed_m_s)
+            if speed_m_s > 1.5:
+                root_speed_alerts.append({
+                    "timestamp_ms": t, "root_speed_m_s": round(speed_m_s, 5),
+                    "reason": "INFERRED_ROOT_STEP_REVIEW_REQUIRED",
+                })
+        previous_sample_ms = t
+        previous_root = root.copy()
+        rig.location = root
         bpy.context.view_layer.update()
+        maximum_root_vertical_displacement = max(
+            maximum_root_vertical_displacement, abs(root.z)
+        )
+        root_xy_samples.append((root.x, root.y))
         support_anchors.append({
             "frame": fno,
-            "valid": bool(good_feet),
-            "observed_feet": good_feet,
-            "applied_root_z_m": round(previous_root_z, 7),
+            "valid": bool(observed_feet),
+            "observed_feet": observed_feet,
+            "applied_root_z_m": round(root.z, 7),
+            "applied_root_xyz_m": [round(float(v), 7) for v in root],
+            "support_lock_valid": bool(lock_visible),
+            "inferred_support_toe": support_foot if lock_visible else None,
+            "hypothesis_not_ground_truth": True,
         })
+        if fno in (1, 10, 25, 46):
+            rig_space_diagnostic("AFTER_SWING_AND_REVIEW_ROOT", fno)
+            print("EMS_G1_ROOT_SUPPORT_DEBUG=" + json.dumps({
+                "frame": fno, "root_world_xyz_m": [
+                    round(float(v), 5) for v in root
+                ], "support_feet": observed_feet,
+                "dominant_foot_locked": bool(lock_visible),
+                "rest_floor_z": rest_foot_floor_z,
+            }))
         rig.keyframe_insert(data_path="location", frame=fno)
         for posebone, _, _ in mapped:
             posebone.keyframe_insert(data_path="rotation_quaternion", frame=fno)
@@ -692,7 +788,22 @@ def generate(source: Path, avatar: Path, output: Path,
         "low_visibility_bone_holds": low_visibility_holds,
         "temporal_swing_clamps": temporal_swing_clamps,
         "swing_angular_speed_limit_deg_per_s": maximum_allowed_speed_deg_s,
-        "foot_support_strategy": "VISIBLE_LOWEST_TOE_JOINT_VERTICAL_ONLY_UNCALIBRATED",
+        "foot_support_strategy": "DOMINANT_TOE_XYZ_HYPOTHESIS_WITH_VERTICAL_FALLBACK",
+        "support_inference": support_inference,
+        "inferred_support_foot": support_foot,
+        "inferred_toe_anchor_world_xyz_m": (
+            [round(float(x), 7) for x in stable_toe_world]
+            if stable_toe_world is not None else None
+        ),
+        "inferred_support_locked_frames": support_lock_frames,
+        "maximum_inferred_root_step_m": round(maximum_root_step_m, 6),
+        "maximum_inferred_root_speed_m_s": round(maximum_root_speed_m_s, 6),
+        "root_speed_review_events": root_speed_alerts,
+        "root_xy_span_m": [
+            round(max(a[k] for a in root_xy_samples) -
+                  min(a[k] for a in root_xy_samples), 6)
+            for k in range(2)
+        ],
         "segment_geometry_reference": "PARENT_HEAD_TO_CHILD_HEAD_NOT_BONE_TAIL",
         "rest_foot_anchor_z_m": round(rest_foot_floor_z, 7),
         "support_root_animation": support_anchors,
@@ -727,7 +838,7 @@ def generate(source: Path, avatar: Path, output: Path,
         "full_body_ik": "NOT_IMPLEMENTED",
         "absolute_root_motion": "NOT_OBSERVABLE",
         "hand_grips": "NOT_SOLVED",
-        "foot_contacts": "VERTICAL_SUPPORT_ESTIMATE_ONLY_NO_IK_OR_SLIDING_LOCK",
+        "foot_contacts": "DOMINANT_TOE_XYZ_INFERRED_NOT_GROUND_TRUTH_NO_IK",
         "license_separation": "ROCKETBOX_MIT_MESH_PLUS_WIKIMEDIA_CC_BY_SA_MOTION",
         "bone_twist": "NOT_OBSERVABLE",
         "commercial_approval": False,
@@ -758,6 +869,13 @@ def generate(source: Path, avatar: Path, output: Path,
         "low_visibility_bone_holds": low_visibility_holds,
         "temporal_swing_clamps": temporal_swing_clamps,
         "vertical_root_anchor_held_frames": support_held_frames,
+        "inferred_support_foot": support_foot,
+        "inferred_locked_frames": support_lock_frames,
+        "root_xy_span_m": [
+            round(max(v[k] for v in root_xy_samples) -
+                  min(v[k] for v in root_xy_samples), 6)
+            for k in range(2)
+        ],
         "max_vertical_root_correction_m": round(
             maximum_root_vertical_displacement, 6
         ),
