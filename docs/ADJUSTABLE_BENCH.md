@@ -43,3 +43,9 @@ En Windows, ejecutar los mismos comandos desde PowerShell ajustando el bucle y `
 ## Publicación
 
 La CI genera archivos técnicos temporales como artefactos, no como distribución pública comercial. No se exportará a Anvil Fitness ni a Supabase. Mantener la PR en borrador mientras los tests o el QA visual fallen.
+
+## Evidencia de ejecución real — 18/11/2026
+- El exportador glTF debe usar `export_animation_mode="ACTIVE_ACTIONS"`, no el modo ACTIONS que separaba respaldos y telescopios y producía un modelo con articulaciones desincronizadas.
+- CI real PASS: https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44276091657, Artifact 14414960823 (efímero). Avatares no incluidos en esta prueba.
+- Un archivo `asset.glb` contiene **una** única animación y **13** canales; las cinco partes obligatorias están animadas juntas. Comprobado leyendo el JSON incrustado en el binario GLB, además de reimportar 0/45/75° y comparar .blend en cinco tiempos. Error angular 0°, error extremo <= 0,00001m.
+- Las imágenes PNG renderizadas de las tres variantes se inspeccionaron y muestran una banqueta reconocible, aún técnica. No califican como render comercial aprobado ni comprueban humano/contactos, fuerza, carga o un ejercicio real.
