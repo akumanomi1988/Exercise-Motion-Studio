@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0.0",
+  "profile_id": "ems.humanoid.rocketbox.sports.v1",
+  "upstream_repository": "microsoft/Microsoft-Rocketbox",
+  "upstream_commit": "0943055db6ec570bcef9f2c8b41c9e5467c808f9",
+  "avatars": [
+    "Sports_Male_01",
+    "Sports_Female_02"
+  ],
+  "coordinate_space": "BLENDER_Z_UP_METERS_AFTER_FBX_IMPORT",
+  "reference_pose": "A_POSE_APPROX_UNVERIFIED",
+  "bone_map": {
+    "hips": "Bip01 Pelvis",
+    "spine": "Bip01 Spine",
+    "chest": "Bip01 Spine2",
+    "neck": "Bip01 Neck",
+    "head": "Bip01 Head",
+    "leftShoulder": "Bip01 L Clavicle",
+    "leftUpperArm": "Bip01 L UpperArm",
+    "leftLowerArm": "Bip01 L Forearm",
+    "leftHand": "Bip01 L Hand",
+    "rightShoulder": "Bip01 R Clavicle",
+    "rightUpperArm": "Bip01 R UpperArm",
+    "rightLowerArm": "Bip01 R Forearm",
+    "rightHand": "Bip01 R Hand",
+    "leftUpperLeg": "Bip01 L Thigh",
+    "leftLowerLeg": "Bip01 L Calf",
+    "leftFoot": "Bip01 L Foot",
+    "leftToe": "Bip01 L Toe0",
+    "rightUpperLeg": "Bip01 R Thigh",
+    "rightLowerLeg": "Bip01 R Calf",
+    "rightFoot": "Bip01 R Foot",
+    "rightToe": "Bip01 R Toe0",
+    "leftThumb": "Bip01 L Finger0",
+    "leftIndex": "Bip01 L Finger1",
+    "rightThumb": "Bip01 R Finger0",
+    "rightIndex": "Bip01 R Finger1"
+  },
+  "constraints": {
+    "bone_twist": "NOT_CALIBRATED",
+    "pole_vectors": "NOT_CALIBRATED",
+    "foot_ik": "NOT_IMPLEMENTED",
+    "hand_ik": "NOT_IMPLEMENTED",
+    "source_pose_retarget": "NOT_TESTED",
+    "license": "MIT",
+    "release_approved": false
+  }
+}
