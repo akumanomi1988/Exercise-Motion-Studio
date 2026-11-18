@@ -32,3 +32,9 @@ Continuar tareas independientes; no convertir un bloqueo en PASS.
 
 | B-21 | OPEN / KINEMATIC_FAIL | Retarget humano de la PR #16: test independiente contra el vídeo real mide 63 pares >15° y 85,0958° de error máximo en flexión de rodilla pese a CI E2E técnico verde | Aislar error en Blender editable frente a GLB, reparar jerarquía/rotaciones/oclusiones y repetir matriz con revisión frontal/lateral/3-4 |
 | B-22 | OPEN / SUPPORT_LIMITATION | Anclaje vertical de pies aprobado técnicamente (1,59 cm de discrepancia GLB), pero no representa contacto real 3D ni corrige deslizamiento horizontal ni penetración | Implementar soporte/IK de pies, contactos temporales y validación de deriva XY antes de G1 |
+
+
+## B-21 — 2026-11-18 — error de flexión y gates de rechazo
+- **OPEN / KINEMATIC_FAIL**: La acción exportada de vídeo humano real conserva skin y movimiento, pero [CI 44253263080](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44253263080) registra 63 divergencias >15° en 141 observaciones fiables, máximo 85,0958° (rodilla derecha). La prueba técnica sigue PASS; **no equivale a G1 PASS**.
+- Acción: comparar la fuente auténtica contra pose editable `.blend` y GLB reimportado, corregir rest basis/oclusiones, retestar sin relajar umbrales, inspeccionar secuencias frontal/lateral/3/4 y completar T01–T03 con vídeos autorizados. Implementaciones en PR #16, aún sin merge.
+- **B-18 sigue OPEN**: derivados del clip Wikimedia CC BY-SA 4.0 no se pueden liberar como material propietario sin revisión legal; utilizar sólo como diagnóstico y obtener material propio/autorizado para explotación.
