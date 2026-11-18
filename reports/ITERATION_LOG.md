@@ -91,3 +91,12 @@ Próxima ejecución: verificación Windows, revisión de licencias/pesos, contra
 5. [CI 44253263080](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44253263080) SUCCESS técnico, 2 avatares/GLB/WebP, pero nuevo control de fidelidad detecta 63 eventos con desviación angular >15°, hasta 85,0958°.
 6. Se añadió comparación diferencial entre el editable `.blend` y GLB exportado (`bee66d84`, pendiente de resultado en el momento de este registro) para distinguir fallo de retarget respecto a fallo de exportación. No usar `run success` como aprobación G1.
 7. No hubo publicación de assets comerciales ni modificaciones de Anvil Fitness/Supabase.
+
+## G1.4 — 2026-11-18 — del PASS técnico al QA articular trazable
+1. Diagnóstico: la referencia vertical elegida por heurística se usaba como rest neutral por hueso y neutralizaba flexiones auténticas. En PR #16 commit `4d6b43c5` se sustituyó por un único cambio de base y direcciones medidas; los avatares y movimiento proceden del mismo vídeo real, no de movimientos sintéticos.
+2. Se añadió `measured_kinematic_fidelity` (`77730f0f`) y CI con argumento `--solved` (`7c1d03fa`) para comparar codos/rodillas del `solved_skeleton.json` SHA-verificado con los huesos animados del GLB reimportado.
+3. Otras correcciones incluidas en la rama de trabajo: anclaje vertical diagnóstico de pie (`a94452bc`), rotación absoluta de hueso sin twist heredado (`7eb7c8d`), y chequeo de pie a través del GLB (`c7325aa3`).
+4. Run `44253025285` falló por falsa diferencia de cuaterniones 360°/0°; corregido módulo 360° en `49720b40`. **No se relajó el límite de 0,5°.**
+5. Run `44253263080`: captura y retarget completos técnicamente PASS; **63 errores articulares >15°, media 20,4285°, máximo 85,0958° = revisión obligatoria**.
+6. Nueva hipótesis y código `3a442af5`: velocidad angular según elapsed time, no límite por fotograma, y sin forzar primera pose real al bind rest. Prueba diferencial del exportador de `.blend` a GLB añadida en `bee66d84`. El siguiente E2E debe demostrar el resultado; **no se asume éxito**.
+7. No se cambió Anvil Fitness ni Supabase. La fuente CC BY-SA y los rigs siguen sin aprobación comercial de producto.
