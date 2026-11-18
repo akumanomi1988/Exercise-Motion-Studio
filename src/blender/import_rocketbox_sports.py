@@ -136,7 +136,13 @@ def generate(source: Path, out: Path):
     out.mkdir(parents=True, exist_ok=True)
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
-    bpy.ops.import_scene.fbx(filepath=str(path))
+    # Blender 5+ ships the new C++ FBX importer. The legacy Python operator
+    # is broken on the Ubuntu Blender 5.0.1 package ('ImportFBX.files'
+    # missing) and is deprecated by Blender's official pipeline notes.
+    if bpy.app.version >= (5, 0, 0):
+        bpy.ops.wm.fbx_import(filepath=str(path))
+    else:
+        bpy.ops.import_scene.fbx(filepath=str(path))
     rigs = [o for o in bpy.context.scene.objects if o.type == "ARMATURE"]
     meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
     print("EMS_ROCKETBOX_IMPORT_DETAILS=" + json.dumps({
