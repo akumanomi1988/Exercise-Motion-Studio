@@ -9,6 +9,8 @@ on:
       - 'scripts/fetch_rocketbox_sports.py'
       - 'src/blender/import_rocketbox_sports.py'
       - 'assets/rig_profiles/rocketbox_sports_humanoid_v1.json'
+      - 'src/motion_pipeline/ems/review_queue.py'
+      - 'tests/unit/test_review_queue.py'
       - '.github/workflows/rocketbox-retarget-ci.yml'
       - 'reports/**'
   workflow_dispatch:
@@ -101,6 +103,29 @@ jobs:
               --output-dir "$root" \
               --solved data/qa-inference/solved_skeleton.json
           done
+      - name: Compile an immutable review queue for real video temporal, knee, IK and rights blockers
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          set -euo pipefail
+          python -m ems review-queue \
+            --male-dir data/qa-inference/rocketbox_retarget_male \
+            --female-dir data/qa-inference/rocketbox_retarget_female \
+            --solved data/qa-inference/solved_skeleton.json \
+            --output data/qa-inference/rocketbox_review_queue.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('data/qa-inference/rocketbox_review_queue.json')
+          d = json.loads(p.read_text())
+          assert d["status"] == "REVIEW_REQUIRED"
+          assert d["release_gate"] == "BLOCKED"
+          assert d["exercises_approved"] == 0
+          assert d["issue_count"] >= 6
+          print("G1_ROCKETBOX_FAIL_CLOSED_REVIEW_QUEUE=" + json.dumps(
+              {"issues": d["issue_count"],"release_gate":d["release_gate"]}
+          ))
+          PY
       - name: Always retain REAL video-derived human motion evidence for visual failure diagnosis
         if: always()
         uses: actions/upload-artifact@v4
@@ -109,6 +134,7 @@ jobs:
           if-no-files-found: warn
           path: |
             data/qa-inference/SOURCE_ATTRIBUTION.txt
+            data/qa-inference/rocketbox_review_queue.json
             data/qa-inference/solved_skeleton.json
             data/qa-inference/rocketbox_retarget_male/
             data/qa-inference/rocketbox_retarget_female/
