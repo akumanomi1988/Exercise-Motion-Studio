@@ -137,7 +137,22 @@ def inspect(source: Path, out: Path):
                 for mod in x.modifiers)]
     require(rigs and mesh, "GLB lost real armature or deforming meshes")
     rig = max(rigs, key=lambda o: len(o.data.bones))
-    require(len(rig.data.bones) >= 25, "GLB lost humanoid skeleton bones")
+    require(len(rig.data.bones) == 80,
+            "expected pinned 80-bone Rocketbox human skeleton, not placeholder")
+    profile = json.loads(
+        (Path(__file__).resolve().parents[2] /
+         "assets/rig_profiles/rocketbox_sports_humanoid_v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    require(report["source_avatar"] in profile["avatars"]
+            and report["source_commit"] == profile["upstream_commit"],
+            "human rig provenance differs from normalized profile")
+    required = set(profile["bone_map"].values())
+    actual = set(rig.data.bones.keys())
+    require(required.issubset(actual),
+            "glTF skeleton lost required canonical humanoid bones: " +
+            repr(sorted(required - actual)))
     require(any(m.data.materials for m in mesh),
             "GLB has no attached source materials")
     body = max(mesh, key=lambda m: len(m.data.vertices))
@@ -163,6 +178,8 @@ def inspect(source: Path, out: Path):
         "variant": report["variant"],
         "source_avatar": report["source_avatar"],
         "bones": len(rig.data.bones),
+        "shared_humanoid_profile": profile["profile_id"],
+        "canonical_bones_mapped": len(profile["bone_map"]),
         "skinned_body_weighted_vertices": weights,
         "actual_deforming_bone": chosen.name,
         "actual_mesh_deformation_under_20deg_arm_swing_m": round(deformation, 6),
