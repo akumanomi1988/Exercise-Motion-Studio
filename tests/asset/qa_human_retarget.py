@@ -46,6 +46,68 @@ def skin_sample(mesh, rig, frame):
 
 
 
+
+def measured_joint_attachment(rig, last_frame):
+    """Verify exported REAL GLB has no detached/deformed limb hinge.
+
+    Motion QA cannot accept a deformable mesh merely because vertices change.
+    MPFB elbow/knee/ankle attachments must remain welded throughout the
+    imported timeline. Local bone translation is prohibited for this mapping.
+    """
+    pairs = (
+        ("upperarm_l", "lowerarm_l"), ("lowerarm_l", "hand_l"),
+        ("upperarm_r", "lowerarm_r"), ("lowerarm_r", "hand_r"),
+        ("thigh_l", "calf_l"), ("calf_l", "foot_l"),
+        ("thigh_r", "calf_r"), ("calf_r", "foot_r"),
+    )
+    animated = {
+        "spine_01", "spine_02", "spine_03", "clavicle_l", "clavicle_r",
+        "upperarm_l", "lowerarm_l", "upperarm_r", "lowerarm_r",
+        "thigh_l", "calf_l", "thigh_r", "calf_r",
+        "foot_l", "foot_r", "neck_01",
+    }
+    require(all(name in rig.pose.bones for pair in pairs for name in pair),
+            "GLB lacks required limb attachment bones")
+    require(all(name in rig.pose.bones for name in animated),
+            "GLB lacks animated bones for local-rotation test")
+    maximum_gap = 0.0
+    maximum_local_bone_translation = 0.0
+    worst_gap = None
+    for fno in range(1, last_frame + 1):
+        bpy.context.scene.frame_set(fno)
+        bpy.context.view_layer.update()
+        for parent, child in pairs:
+            gap = (rig.pose.bones[parent].tail -
+                   rig.pose.bones[child].head).length
+            require(math.isfinite(gap), "nonfinite GLB limb joint attachment")
+            if gap > maximum_gap:
+                maximum_gap = gap
+                worst_gap = {"frame": fno, "parent": parent,
+                             "child": child, "distance_m": round(gap, 7)}
+        for name in animated:
+            translated = rig.pose.bones[name].location.length
+            require(math.isfinite(translated), "nonfinite bone location")
+            maximum_local_bone_translation = max(
+                maximum_local_bone_translation, translated
+            )
+    # A technical hinge must be fixed even before joint-angle fidelity,
+    # human appearance, IK or contact can be considered.
+    require(maximum_gap <= .03,
+            f"GLB detached joints (limit 3cm): {worst_gap}")
+    require(maximum_local_bone_translation <= .001,
+            "GLB relies on implicit non-root bone translation: " +
+            str(round(maximum_local_bone_translation, 5)))
+    return {
+        "status": "TECHNICAL_PASS",
+        "max_limb_joint_gap_m": round(maximum_gap, 7),
+        "max_nonroot_bone_translation_m": round(
+            maximum_local_bone_translation, 7
+        ),
+        "worst_gap": worst_gap,
+        "checked_frames": last_frame,
+        "commercial_approval": False,
+    }
+
 def measured_kinematic_fidelity(rig, solved, report):
     """Independently compare original solved REAL-video joint angles with the
     exported GLB's animated pose bones after roundtrip. This is a screening
@@ -233,6 +295,10 @@ def inspect(folder: Path, solved: Path):
             "GLB changed ground-relative toe anchor beyond 3 cm: " +
             str(round(maximum_floor_error, 6)))
 
+    joint_attachment = measured_joint_attachment(
+        rig, report["timeline_end_frame"]
+    )
+
     # Evaluate REAL deformed vertices of the SKINNED MESH, not root translations
     # or static posebones alone. Any nonzero pose must alter surface geometry.
     first = skin_sample(body, rig, 1)
@@ -291,6 +357,7 @@ def inspect(folder: Path, solved: Path):
         "glb_bones": glb_bones,
         "glb_skin_weights": glb_skin_weights,
         "real_mesh_deformation_span_m": round(max_mesh_displacement, 6),
+        "joint_attachment": joint_attachment,
         "kinematic_fidelity": kinematic_fidelity,
         "editable_blend_kinematic_fidelity": blend_fidelity,
         "max_joint_flexion_export_drift_degrees": round(
