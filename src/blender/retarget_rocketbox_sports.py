@@ -291,7 +291,9 @@ def _studio(mesh, rig):
     scene.world.color = (.085, .09, .10)
 
 
-def _fit_review_camera_to_actual_motion(mesh, rig, frames):
+def _fit_review_camera_to_actual_motion(
+    mesh, rig, frames, *, camera_offset=(2.1, -4.5, .3)
+):
     """Fit the camera to the ACTUALLY evaluated skinned model across time.
 
     A fixed rest-pose camera can crop the shins after a genuine video squat.
@@ -326,7 +328,7 @@ def _fit_review_camera_to_actual_motion(mesh, rig, frames):
     require(.5 < height < 3.6, f"unreasonable real avatar motion envelope: {height:.3f}m")
     # Frontal/three-quarter as before; preserve view intent and re-center on
     # all eight actually rendered poses, rather than the imported bind rest.
-    cam.location = center + Vector((2.1, -4.5, .3))
+    cam.location = center + Vector(camera_offset)
     cam.rotation_euler = (center - cam.location).to_track_quat("-Z", "Y").to_euler()
     bpy.context.view_layer.update()
     invert_camera = cam.matrix_world.inverted()
@@ -762,6 +764,37 @@ def generate(source: Path, avatar: Path, output: Path,
         bpy.ops.render.render(write_still=True)
     png = output / "retarget_review.png"
     shutil.copyfile(frame_folder / "frame_004.png", png)
+    # Supplemental QA cameras show the SAME measured human animation, not
+    # separate motion generated for an attractive pose. Every angle is
+    # re-framed against all eight actual skin samples so no body is cropped.
+    # The source .blend retains the primary dynamic overview camera.
+    diagnostic_camera = scene.camera
+    preserved_camera = diagnostic_camera.matrix_world.copy()
+    preserved_ortho = diagnostic_camera.data.ortho_scale
+    review_views = {}
+    for name, vector in (
+        ("front", (0.0, -5.0, 0.3)),
+        ("side", (5.0, 0.0, 0.3)),
+        ("three_quarter", (3.5, -3.5, 0.3)),
+    ):
+        framing_view = _fit_review_camera_to_actual_motion(
+            mesh, rig, preview_frames, camera_offset=vector
+        )
+        scene.frame_set(preview_frames[4])
+        target = output / ("review_" + name + ".png")
+        scene.render.filepath = str(target)
+        bpy.ops.render.render(write_still=True)
+        review_views[name] = {
+            "file": target.name,
+            "sample_frame": preview_frames[4],
+            "actual_skeleton_source": "SAME_REAL_CAPTURED_CLIP",
+            "camera_offset_m": list(vector),
+            "framing": framing_view,
+        }
+    diagnostic_camera.matrix_world = preserved_camera
+    diagnostic_camera.data.ortho_scale = preserved_ortho
+    scene.frame_set(1)
+    bpy.context.view_layer.update()
     shutil.copyfile(attribution, output / "SOURCE_ATTRIBUTION.txt")
 
     manifest = {
@@ -785,6 +818,7 @@ def generate(source: Path, avatar: Path, output: Path,
         "reference_pose_bind_mesh_deviation_m": round(neutral_rest_deviation_m, 6),
         "rest_mesh_preview": "imported_glb_rest.png",
         "actual_motion_camera_framing": framing,
+        "real_motion_multiview_review": review_views,
         "low_visibility_bone_holds": low_visibility_holds,
         "temporal_swing_clamps": temporal_swing_clamps,
         "swing_angular_speed_limit_deg_per_s": maximum_allowed_speed_deg_s,
@@ -849,6 +883,9 @@ def generate(source: Path, avatar: Path, output: Path,
                          "retarget_review.glb",
                          "retarget_review.png",
                          "imported_glb_rest.png",
+                         "review_front.png",
+                         "review_side.png",
+                         "review_three_quarter.png",
                          "SOURCE_ATTRIBUTION.txt",
                          "UPSTREAM_LICENSE.md")
         },
