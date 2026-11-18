@@ -12,6 +12,7 @@ from ems.media import probe_registered_video
 from ems.pose import capture_registered_video
 from ems.solver import solve_registered_capture
 from ems.review_queue import write_real_video_review
+from ems.kinetic import write_inventory
 from ems.rights import ALLOWED_RIGHTS_BASES, InputValidationError
 
 
@@ -61,6 +62,13 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--female-dir", required=True)
     review.add_argument("--solved", required=True, help="Exact solved_skeleton.json")
     review.add_argument("--output", required=True)
+    kinetic = sub.add_parser(
+        "kinetic-audit",
+        help="Offline SHA-pinned Kinetic metadata/equipment inventory; no YouTube or RepDB",
+    )
+    kinetic.add_argument("--exercises", required=True)
+    kinetic.add_argument("--equipment", required=True)
+    kinetic.add_argument("--output", required=True)
     return parser
 
 
@@ -103,6 +111,12 @@ def main(argv: list[str] | None = None) -> int:
             result = write_real_video_review(
                 male_dir=args.male_dir, female_dir=args.female_dir,
                 solved_path=args.solved, output_path=args.output,
+            )
+        elif args.command == "kinetic-audit":
+            result = write_inventory(
+                exercise_path=args.exercises,
+                equipment_path=args.equipment,
+                output_path=args.output,
             )
         else:
             raise InputValidationError("unsupported command")
