@@ -1,0 +1,67 @@
+name: MIT Rocketbox real sport avatars import and Blender GLB QA
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/fetch_rocketbox_sports.py'
+      - 'src/blender/import_rocketbox_sports.py'
+      - 'tests/asset/qa_rocketbox_sports.py'
+      - '.github/workflows/rocketbox-avatar-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  authentic-dual-sport-avatars:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Confirm Python code compiles
+        run: |
+          python -m py_compile scripts/fetch_rocketbox_sports.py src/blender/import_rocketbox_sports.py tests/asset/qa_rocketbox_sports.py
+      - name: Retrieve official Microsoft MIT FBX and textures, pinned by Git SHA
+        run: |
+          python scripts/fetch_rocketbox_sports.py \
+            --output-dir data/vendor/rocketbox_sports --variant both
+          grep -q 'Copyright (c) 2020 Microsoft' data/vendor/rocketbox_sports/male/UPSTREAM_LICENSE.md
+          grep -q 'Copyright (c) 2020 Microsoft' data/vendor/rocketbox_sports/female/UPSTREAM_LICENSE.md
+          test -f data/vendor/rocketbox_sports/male/Export/Sports_Male_01.fbx
+          test -f data/vendor/rocketbox_sports/female/Export/Sports_Female_01.fbx
+      - name: Install real Blender for headless mesh and skinning QA
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends blender python3-numpy python3-pil
+          blender --version | head -n 2
+      - name: Build source .blend, GLB and rest PNG from two authentic skinned humans
+        run: |
+          set -euo pipefail
+          for variant in male female; do
+            blender -b --factory-startup --python-exit-code 10 \
+              --python src/blender/import_rocketbox_sports.py -- \
+              --source-dir "data/vendor/rocketbox_sports/$variant" \
+              --output-dir "data/generated_avatars/rocketbox_sports/$variant"
+          done
+      - name: Verify GLB roundtrip and actual skinned geometry deforming under bone rotation
+        run: |
+          set -euo pipefail
+          for variant in male female; do
+            blender -b --factory-startup --python-exit-code 10 \
+              --python tests/asset/qa_rocketbox_sports.py -- \
+              --source-dir "data/vendor/rocketbox_sports/$variant" \
+              --output-dir "data/generated_avatars/rocketbox_sports/$variant"
+          done
+      - name: Preserve SOURCE assets with MIT notice and technical GLB evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rocketbox-real-male-female-sports-MIT-review
+          if-no-files-found: warn
+          path: |
+            data/vendor/rocketbox_sports/male/
+            data/vendor/rocketbox_sports/female/
+            data/generated_avatars/rocketbox_sports/male/
+            data/generated_avatars/rocketbox_sports/female/
+          retention-days: 7
+          compression-level: 6
