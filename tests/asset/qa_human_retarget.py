@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import math
+import struct
 import sys
 from pathlib import Path
 
@@ -47,7 +48,51 @@ def skin_sample(mesh, rig, frame):
 
 
 
-def frame_from_capture(source_frame, report):
+def glb_first_animation_key_seconds(glb_path: Path) -> float:
+    """Read actual glTF 2.0 animation timestamps, not assumed Blender FPS.
+
+    A 1-based Blender key at frame 1 was exported at 1/fps rather than at
+    zero. Imported GLB and editable .blend therefore have different start
+    offsets as well as different scene frame rates. Extract the time base
+    directly from the GLB accessor minima to avoid false joint/floor QA.
+    """
+    with glb_path.open("rb") as stream:
+        header = stream.read(20)
+        require(len(header) == 20, "truncated GLB header")
+        magic, version, total_bytes, json_length, chunk_type = struct.unpack(
+            "<IIIII", header
+        )
+        require(magic == 0x46546C67 and version == 2,
+                "not a glTF 2.0 binary")
+        require(chunk_type == 0x4E4F534A and
+                0 < json_length <= 10 * 1024 * 1024 and
+                total_bytes == glb_path.stat().st_size,
+                "invalid GLB JSON chunk")
+        document = json.loads(stream.read(json_length))
+    animations = document.get("animations", [])
+    require(len(animations) >= 1, "GLB has no animation")
+    accessors = document.get("accessors", [])
+    first_keys = []
+    for animation in animations:
+        for sampler in animation.get("samplers", []):
+            idx = sampler.get("input")
+            require(type(idx) is int and 0 <= idx < len(accessors),
+                    "invalid glTF sampler input accessor")
+            acc = accessors[idx]
+            low = acc.get("min")
+            require(isinstance(low, list) and len(low) == 1 and
+                    type(low[0]) in (int, float) and
+                    math.isfinite(low[0]) and low[0] >= 0,
+                    "missing or invalid glTF animation timestamp minimum")
+            first_keys.append(float(low[0]))
+    require(first_keys, "no timestamped GLB animation samplers")
+    first = min(first_keys)
+    require(first < .5,
+            "unexpectedly delayed GLB first key: " + str(first))
+    return first
+
+
+def frame_from_capture(source_frame, report, *, origin_seconds=0.0):
     """Map captured frame index to the current Blender scene timebase.
 
     Blender .blend preserves authored 6fps; glTF import normally starts
@@ -64,7 +109,10 @@ def frame_from_capture(source_frame, report):
             "invalid source timebase")
     require(math.isfinite(current_fps) and current_fps > 0,
             "invalid imported scene timebase")
-    return 1 + round((source_frame - 1) * current_fps / original_fps)
+    require(math.isfinite(origin_seconds) and 0 <= origin_seconds < .5,
+            "invalid animation start offset")
+    return 1 + round(((source_frame - 1) / original_fps +
+                      origin_seconds) * current_fps)
 
 
 def measured_joint_attachment(rig, last_frame):
@@ -128,7 +176,9 @@ def measured_joint_attachment(rig, last_frame):
         "commercial_approval": False,
     }
 
-def measured_kinematic_fidelity(rig, solved, report):
+def measured_kinematic_fidelity(
+    rig, solved, report, *, origin_seconds=0.0
+):
     """Independently compare original solved REAL-video joint angles with the
     exported GLB's animated pose bones after roundtrip. This is a screening
     test, not evidence of absolute scene/pose or commercial correctness."""
@@ -160,7 +210,9 @@ def measured_kinematic_fidelity(rig, solved, report):
         source_frame = 1 + round(
             (sample["timestamp_ms"] - first_ms) * fps / 1000
         )
-        frame_no = frame_from_capture(source_frame, report)
+        frame_no = frame_from_capture(
+            source_frame, report, origin_seconds=origin_seconds
+        )
         require(1 <= source_frame <= report["timeline_end_frame"],
                 "solved timestamp does not match GLB animation timeline")
         bpy.context.scene.frame_set(frame_no)
@@ -216,7 +268,9 @@ def measured_kinematic_fidelity(rig, solved, report):
 def hash_path(path):
     return sha(path)
 
-def measure_vertical_support(rig, anchors, report, floor_z):
+def measure_vertical_support(
+    rig, anchors, report, floor_z, *, origin_seconds=0.0
+):
     """Measure support at exactly matching ANIMATION SECONDS in this scene.
 
     Record rather than bypass failed values. Called on imported GLB and then
@@ -236,7 +290,9 @@ def measure_vertical_support(rig, anchors, report, floor_z):
                 "invalid observed foot declaration")
         if not feet:
             continue
-        scene_frame = frame_from_capture(anchor["frame"], report)
+        scene_frame = frame_from_capture(
+            anchor["frame"], report, origin_seconds=origin_seconds
+        )
         bpy.context.scene.frame_set(scene_frame)
         bpy.context.view_layer.update()
         toe_z = min(
@@ -300,6 +356,9 @@ def inspect(folder: Path, solved: Path):
 
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
+    glb_origin_seconds = glb_first_animation_key_seconds(
+        folder / "retarget_review.glb"
+    )
     bpy.ops.import_scene.gltf(filepath=str(folder / "retarget_review.glb"))
     rigs = [o for o in bpy.context.scene.objects if o.type == "ARMATURE"]
     require(len(rigs) == 1, "GLB roundtrip must preserve single humanoid rig")
@@ -335,14 +394,20 @@ def inspect(folder: Path, solved: Path):
     require(report.get("full_body_ik") == "NOT_IMPLEMENTED" and
             report["commercial_approval"] is False,
             "toe anchoring cannot establish complete contact or IK")
-    glb_support = measure_vertical_support(rig, anchors, report, floor_z)
+    glb_support = measure_vertical_support(
+        rig, anchors, report, floor_z,
+        origin_seconds=glb_origin_seconds
+    )
     maximum_floor_error = glb_support["max_error_m"]
     validated_support_frames = glb_support["observed_frames"]
 
     imported_scene_fps = (
         bpy.context.scene.render.fps / bpy.context.scene.render.fps_base
     )
-    imported_end = frame_from_capture(report["timeline_end_frame"], report)
+    imported_end = frame_from_capture(
+        report["timeline_end_frame"], report,
+        origin_seconds=glb_origin_seconds
+    )
     joint_attachment = measured_joint_attachment(rig, imported_end)
 
     # Evaluate REAL deformed vertices of the SKINNED MESH, not root translations
@@ -364,7 +429,9 @@ def inspect(folder: Path, solved: Path):
     # Check actual GLB joint flexion against original captured 3D directions.
     # This catches per-bone neutralization corrupting elbow/knee articulation
     # even when vertex animation, skins and GLB roundtrip technically pass.
-    kinematic_fidelity = measured_kinematic_fidelity(rig, solved, report)
+    kinematic_fidelity = measured_kinematic_fidelity(
+        rig, solved, report, origin_seconds=glb_origin_seconds
+    )
 
     # Opening a different .blend destroys Blender RNA object references.
     # Retain scalar GLB evidence BEFORE that operation.
@@ -409,7 +476,11 @@ def inspect(folder: Path, solved: Path):
         "source_motion_fps": report["sample_fps"],
         "imported_glb_scene_fps": imported_scene_fps,
         "editable_blend_scene_fps": blend_scene_fps,
-        "time_sampling_basis": "ANIMATION_SECONDS_RETIMED_PER_SCENE_FPS",
+        "time_sampling_basis": "GLTF_ACCESSOR_START_SECONDS_AND_SCENE_FPS",
+        "glb_first_animation_key_seconds": round(glb_origin_seconds, 7),
+        "glb_first_animation_frame": frame_from_capture(
+            1, report, origin_seconds=glb_origin_seconds
+        ),
         "kinematic_fidelity": kinematic_fidelity,
         "editable_blend_kinematic_fidelity": blend_fidelity,
         "max_joint_flexion_export_drift_degrees": round(
