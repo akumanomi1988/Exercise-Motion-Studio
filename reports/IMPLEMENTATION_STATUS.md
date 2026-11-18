@@ -69,3 +69,10 @@ Hitos y trabajo futuro: [Issues del repositorio](https://github.com/akumanomi198
 - [PR #16 sigue abierta](https://github.com/akumanomi1988/Exercise-Motion-Studio/pull/16), CI técnica [44124440610 SUCCESS](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44124440610), vuelve a generar ambos GLB animados sobre avatares ya saneados.
 - **QA visual examinada del artifact 14346548007: FAIL.** Geometría de avatar corregida, pero poses/rotaciones monoculares violentas (sentadilla a una pierna) deforman cuerpo en determinados fotogramas. Fuente contiene cinco eventos de velocidad angular excesiva y oclusiones (antebrazo/codo derecho). La falta de twist, root, contacto/IK y robustez de extracción no está resuelta.
 - G1 NO APROBADO. AG1: únicamente sub-gate de generación y fidelidad GLB técnica PASS; avatar de calidad comercial aún PENDING.
+
+## AG2.2 — banco regulable original con bisagra y glTF animado (2026-11-18; PR #20)
+
+- Implementado generador procedural original de banco regulable (estructura fija, asiento, pies, eje de bisagra y respaldo keyframed 0/30/60 grados), con fuente .blend, GLB, PNG y manifiesto de trazabilidad/hashes.
+- Publicado QA que reimporta GLB, compara recorrido de respaldo contra trigonometría del pivote, comprueba que asiento/chasis no se mueven y exige licencia PENDING/comercial no permitido.
+- Primera ejecución CI [44253816503](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44253816503): generación real de Blender PASS, prueba de recorrido FAIL por comparar el frame 31 en distinta base temporal tras glTF roundtrip. Corregido el QA para evaluar 2.0 segundos reales y fijado `timeline_fps` en contrato; nueva CI pendiente de evaluación.
+- **G2/AG2 IN_PROGRESS y activo no aprobado**: faltan revisión visual, compatibilidad y contacto con los dos avatares, collider de superficies, soporte/anclajes bajo carga y aprobación de distribución. No existe prueba T06/T08 real.
