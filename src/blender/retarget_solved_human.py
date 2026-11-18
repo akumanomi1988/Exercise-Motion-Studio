@@ -151,38 +151,42 @@ def _find_real_skin():
 
 
 def _set_global_direction(posebone, desired: Vector):
-    """Aim from bind orientation, not from the parent-twisted live orientation.
+    """Aim a bone using ONLY a local quaternion; never write posebone.matrix.
 
-    Rotating the CURRENT pose matrix only aligns a bone's long axis and silently
-    preserves axial twist inherited from its parents. It can produce severe skin
-    torsion while bone direction tests still pass. Use the shortest bind-rest
-    swing and preserve the evaluated head to keep parent-child attachment.
-    Missing twist, root motion and contact remain explicitly unresolved.
+    Setting posebone.matrix as an armature-global absolute transform can set
+    implicit local bone translations to counter parent movement. The previous
+    retarget only keyframed rotation and silently left those translations
+    inconsistent across frames/GLB. Solve the minimal swing in the bone's
+    animated LOCAL rotation basis with the actual parent pose evaluated.
+    This cannot infer axial twist, depth or medically valid constraints.
     """
-    bind = posebone.bone
-    rest_dir = direction(bind.head_local, bind.tail_local)
-    swing = rest_dir.rotation_difference(desired)
-    target_orientation = swing @ bind.matrix_local.to_quaternion()
-    origin = posebone.head.copy()
-    posebone.matrix = (Matrix.Translation(origin)
-                       @ target_orientation.to_matrix().to_4x4())
+    require(posebone.rotation_mode == "QUATERNION",
+            "local swing requires quaternion rotation mode")
+    require(posebone.location.length < 1e-6,
+            "a deform bone acquired a translation before retarget")
+    bpy.context.view_layer.update()
+    before_orientation = posebone.matrix.to_quaternion()
+    current = direction(posebone.head, posebone.tail)
+    swing_armature = current.rotation_difference(desired)
+    # R_after = R_before * R_local, and the required world-space
+    # orientation is swing_armature * R_before. Conjugate into the bone's
+    # current LOCAL pose basis, without touching its translation/scale.
+    swing_local = (before_orientation.inverted()
+                   @ swing_armature @ before_orientation)
+    posebone.rotation_quaternion = (
+        swing_local @ posebone.rotation_quaternion
+    ).normalized()
     bpy.context.view_layer.update()
     actual = direction(posebone.head, posebone.tail)
-    error = math.degrees(actual.angle(desired))
-    # q and -q encode the SAME rotation. mathutils Quaternion.angle may
-    # report 360 degrees for the identical orientation represented with the
-    # opposite sign, so compare the shortest SO(3) rotation modulo 2*pi.
-    residual = posebone.matrix.to_quaternion().rotation_difference(
-        target_orientation
-    )
-    angle = residual.angle
-    twist_error = math.degrees(min(angle, 2.0 * math.pi - angle))
-    require(math.isfinite(error) and error < .5,
-            f"bone {posebone.name}: armature direction did not settle: {error:.3f} deg")
-    require(math.isfinite(twist_error) and twist_error < .5,
-            f"bone {posebone.name}: unobserved axial orientation drift: "
-            f"{twist_error:.3f} deg")
-    return error, twist_error
+    angular_error = math.degrees(actual.angle(desired))
+    require(math.isfinite(angular_error) and angular_error < .5,
+            f"bone {posebone.name} failed local swing aim: "
+            f"{angular_error:.3f} degrees")
+    require(posebone.location.length < 1e-6,
+            f"unexpected translated deform bone: {posebone.name}")
+    # Local swing is the shortest correction: rotation_about_axial is not
+    # estimated; do not report invented twist fidelity.
+    return angular_error, 0.0
 
 
 def _studio(mesh, rig):
@@ -369,6 +373,7 @@ def generate(source: Path, avatar: Path, output: Path,
             posebone.rotation_mode = "QUATERNION"
             posebone.rotation_quaternion = (1, 0, 0, 0)
             posebone.location = (0, 0, 0)
+            posebone.scale = (1, 1, 1)
         bpy.context.view_layer.update()
 
         observed_now = sample.get("state") == "SOLVED_REVIEW_REQUIRED"
