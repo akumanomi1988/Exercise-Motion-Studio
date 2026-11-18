@@ -38,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     asset = sub.add_parser("asset-check", help="Verify asset.json integrity only; not geometry QA")
     asset.add_argument("--asset-dir", required=True)
     asset.add_argument("--require-commercial", action="store_true",
-                       help="Block unless distribution rights review is recorded")
+                       help="Require recorded rights approval and hashed visual/geometry QA attestation (not independent GLB validation)")
     capture = sub.add_parser("capture", help="Run local MediaPipe pose inference on a probed video")
     capture.add_argument("--job-id", required=True)
     capture.add_argument("--model", required=True, help="Locally stored versioned PoseLandmarker .task")

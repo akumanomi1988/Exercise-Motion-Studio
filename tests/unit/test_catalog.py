@@ -97,6 +97,71 @@ class CatalogManifestTests(unittest.TestCase):
         with self.assertRaisesRegex(InputValidationError, "rights review incomplete"):
             inspect_asset_folder(self.asset, require_commercial=True)
 
+    def _approve_rights_record(self):
+        self.meta["licenses"].update({
+            "status": "APPROVED", "distribution_approved": True,
+            "reviewer": "contract-test-only", "reviewed_at": "2026-11-18",
+            "evidence_sha256": "c" * 64,
+        })
+
+    def test_rights_approved_but_missing_visual_qa_fails_closed(self):
+        self._approve_rights_record()
+        self.save()
+        result = inspect_asset_folder(self.asset)
+        self.assertFalse(result["commercial_distribution_allowed"])
+        with self.assertRaisesRegex(InputValidationError, "visual/geometry QA"):
+            inspect_asset_folder(self.asset, require_commercial=True)
+
+    def test_visual_review_pending_cannot_be_unblocked_by_false_boolean(self):
+        self._approve_rights_record()
+        self.meta["qa"] = {
+            "roundtrip": "PASS", "human_visual_review": "PENDING",
+            "commercial_approval": True, "report_sha256": "f" * 64,
+            "reviewer": "contract-test-only", "reviewed_at": "2026-11-18",
+        }
+        self.save()
+        with self.assertRaisesRegex(InputValidationError, "visual/geometry QA"):
+            inspect_asset_folder(self.asset, require_commercial=True)
+
+    def test_tampered_qa_report_is_rejected_even_with_signed_fields(self):
+        self._approve_rights_record()
+        self.meta["qa"] = {
+            "roundtrip": "PASS", "human_visual_review": "APPROVED",
+            "commercial_approval": True, "report_sha256": "e" * 64,
+            "reviewer": "contract-test-only", "reviewed_at": "2026-11-18",
+        }
+        (self.asset / "qa_report.json").write_text(json.dumps({
+            "technical_roundtrip": "PASS", "human_visual_review": "APPROVED",
+            "commercial_approval": True, "reviewer": "contract-test-only",
+            "reviewed_at": "2026-11-18",
+        }), encoding="utf-8")
+        self.save()
+        with self.assertRaisesRegex(InputValidationError, "visual/geometry QA"):
+            inspect_asset_folder(self.asset, require_commercial=True)
+
+    def test_qa_claim_only_recorded_when_report_hash_matches(self):
+        # Contract/attestation test ONLY: placeholder bytes never prove GLB
+        # render or that the human reviewer is authorized in production.
+        self._approve_rights_record()
+        report = {
+            "technical_roundtrip": "PASS", "human_visual_review": "APPROVED",
+            "commercial_approval": True, "reviewer": "contract-test-only",
+            "reviewed_at": "2026-11-18",
+        }
+        payload = json.dumps(report).encode("utf-8")
+        (self.asset / "qa_report.json").write_bytes(payload)
+        self.meta["qa"] = {
+            "roundtrip": "PASS", "human_visual_review": "APPROVED",
+            "commercial_approval": True,
+            "report_sha256": hashlib.sha256(payload).hexdigest(),
+            "reviewer": "contract-test-only", "reviewed_at": "2026-11-18",
+        }
+        self.save()
+        outcome = inspect_asset_folder(self.asset, require_commercial=True)
+        self.assertTrue(outcome["commercial_distribution_allowed"])
+        self.assertTrue(outcome["qa_record_integrity_pass"])
+        self.assertEqual(outcome["external_geometry_validation"], "NOT_PERFORMED")
+
 
 if __name__ == "__main__":
     unittest.main()

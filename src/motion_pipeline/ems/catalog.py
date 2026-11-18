@@ -43,6 +43,42 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _approved_qa_record(root: Path, qa: object) -> bool:
+    """Check signed review metadata AND integrity of the archived QA record.
+
+    This is an integrity/attestation boundary, not independent GLB rendering or
+    proof that a named reviewer is an authorized person. Commercial publishing
+    must additionally verify reviewer identity and externally rerun Blender QA.
+    """
+    if not isinstance(qa, dict):
+        return False
+    if (qa.get("human_visual_review") != "APPROVED"
+            or qa.get("commercial_approval") is not True
+            or qa.get("roundtrip", qa.get("glb_roundtrip")) != "PASS"):
+        return False
+    if not (isinstance(qa.get("reviewer"), str) and qa["reviewer"].strip()
+            and isinstance(qa.get("reviewed_at"), str) and qa["reviewed_at"].strip()
+            and isinstance(qa.get("report_sha256"), str)
+            and bool(_SHA.fullmatch(qa["report_sha256"]))):
+        return False
+    record = root / "qa_report.json"
+    if (not record.is_file() or record.is_symlink()
+            or record.resolve().parent != root
+            or not (2 < record.stat().st_size <= 512 * 1024)
+            or _sha256(record) != qa["report_sha256"]):
+        return False
+    try:
+        report = json.loads(record.read_text(encoding="utf-8"))
+    except (ValueError, UnicodeError):
+        return False
+    return (isinstance(report, dict)
+            and report.get("technical_roundtrip") == "PASS"
+            and report.get("human_visual_review") == "APPROVED"
+            and report.get("commercial_approval") is True
+            and report.get("reviewer") == qa["reviewer"]
+            and report.get("reviewed_at") == qa["reviewed_at"])
+
+
 def inspect_asset_folder(folder: str | Path, require_commercial: bool = False) -> dict[str, Any]:
     """Fail closed on unsafe paths, bad provenance, missing files or unapproved rights.
 
@@ -126,7 +162,7 @@ def inspect_asset_folder(folder: str | Path, require_commercial: bool = False) -
                f"missing/invalid {role} SHA-256")
         _check(_sha256(item) == digest, f"{role} SHA-256 mismatch")
 
-    approved = (
+    rights_approved = (
         rights["status"] == "APPROVED"
         and rights["distribution_approved"] is True
         and isinstance(rights.get("reviewer"), str) and bool(rights["reviewer"].strip())
@@ -134,13 +170,17 @@ def inspect_asset_folder(folder: str | Path, require_commercial: bool = False) -
         and isinstance(rights.get("evidence_sha256"), str)
         and bool(_SHA.fullmatch(rights["evidence_sha256"]))
     )
+    qa_record_approved = _approved_qa_record(root, data.get("qa"))
     if require_commercial:
-        _check(approved, "commercial distribution blocked: rights review incomplete")
+        _check(rights_approved, "commercial distribution blocked: rights review incomplete")
+        _check(qa_record_approved, "commercial distribution blocked: visual/geometry QA evidence incomplete")
     return {
         "asset_id": asset_id, "version": version,
         "status": "MANIFEST_INTEGRITY_PASS",
         "rights_status": rights["status"],
-        "commercial_distribution_allowed": bool(approved),
+        # These are recorded attestations, NOT a real-time mesh/render check.
+        "commercial_distribution_allowed": bool(rights_approved and qa_record_approved),
+        "qa_record_integrity_pass": bool(qa_record_approved),
         "external_geometry_validation": "NOT_PERFORMED",
         "visual_review": "NOT_PERFORMED",
     }
