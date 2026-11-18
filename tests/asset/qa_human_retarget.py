@@ -190,6 +190,49 @@ def inspect(folder: Path, solved: Path):
     require(rig.animation_data is not None,
             "armature imported without bound action")
 
+    # Independently validate that the ground-relative root correction survived
+    # the GLB export. This proves only vertical toe anchoring on visible samples,
+    # NOT horizontal foot locking, full body IK or a commercially valid motion.
+    anchors = report.get("support_root_animation")
+    require(isinstance(anchors, list) and
+            len(anchors) == report["source_frames"],
+            "support root provenance missing or incomplete")
+    floor_z = report.get("rest_foot_anchor_z_m")
+    require(type(floor_z) in (int, float) and math.isfinite(floor_z),
+            "invalid original rest-toe reference")
+    require(report.get("foot_support_strategy") ==
+            "VISIBLE_LOWEST_TOE_VERTICAL_ONLY_UNCALIBRATED",
+            "unexpected ground-relative strategy")
+    require(report.get("full_body_ik") == "NOT_IMPLEMENTED" and
+            report["commercial_approval"] is False,
+            "toe anchoring cannot establish complete contact or IK")
+    maximum_floor_error = 0.0
+    validated_support_frames = 0
+    for anchor in anchors:
+        require(type(anchor.get("frame")) is int and
+                type(anchor.get("valid")) is bool,
+                "invalid support metadata")
+        feet = anchor.get("observed_feet")
+        require(isinstance(feet, list) and
+                set(feet).issubset({"foot_l", "foot_r"}) and
+                bool(feet) == anchor["valid"],
+                "invalid observed-foot declaration")
+        if not feet:
+            continue
+        bpy.context.scene.frame_set(anchor["frame"])
+        bpy.context.view_layer.update()
+        toe_z = min(
+            (rig.matrix_world @ rig.pose.bones[name].tail).z
+            for name in feet
+        )
+        maximum_floor_error = max(maximum_floor_error, abs(toe_z - floor_z))
+        validated_support_frames += 1
+    require(validated_support_frames >= 3,
+            "not enough observed foot anchors for roundtrip QA")
+    require(maximum_floor_error <= .03,
+            "GLB changed ground-relative toe anchor beyond 3 cm: " +
+            str(round(maximum_floor_error, 6)))
+
     # Evaluate REAL deformed vertices of the SKINNED MESH, not root translations
     # or static posebones alone. Any nonzero pose must alter surface geometry.
     first = skin_sample(body, rig, 1)
@@ -233,6 +276,10 @@ def inspect(folder: Path, solved: Path):
         "glb_skin_weights": glb_skin_weights,
         "real_mesh_deformation_span_m": round(max_mesh_displacement, 6),
         "kinematic_fidelity": kinematic_fidelity,
+        "vertical_foot_anchor_roundtrip": "TECHNICAL_PASS",
+        "vertical_support_observed_frames": validated_support_frames,
+        "vertical_support_held_frames": report["support_frames_held"],
+        "maximum_vertical_foot_anchor_error_m": round(maximum_floor_error, 7),
         "human_visual_review": "PENDING",
         "biomechanics_review": "PENDING",
         "commercial_approval": False,
