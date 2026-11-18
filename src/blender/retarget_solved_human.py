@@ -1,6 +1,6 @@
 """Retarget an authentic solved MediaPipe recording onto a real MPFB skinned rig.
 
-This is an *experimental reference-relative swing* transfer to a deformable MakeHuman
+This is an *experimental observed-direction* transfer to a deformable MakeHuman
 body, never a validated motion.json / foot IK / joint-twist / commercial clip.
 The solver's relative coordinates cannot recover absolute root translation.
 No procedural substitute movements are generated or silently approved.
@@ -298,21 +298,17 @@ def generate(source: Path, avatar: Path, output: Path,
     rest_image = output / "imported_glb_rest.png"
     scene.render.filepath = str(rest_image)
     bpy.ops.render.render(write_still=True)
-    # Transfer DELTAS from a measured reference direction to the respective
-    # MPFB rest directions. Absolute pose orientations from an uncalibrated
-    # monocular pose source are not a rig's canonical rest pose.
+    # Calibrate ONE rigid source-to-rig basis, then preserve OBSERVED
+    # anatomical segment directions. The previous per-bone reference-relative
+    # swings zeroed out independently bent knees/elbows at the chosen sample,
+    # changing joint flexion and compounding non-anatomical articulation.
+    # Camera alignment does NOT imply a validated world/root calibration.
     reference = choose_reference(captured)
     align = infer_alignment([reference], rig)
-    ref_xyz = {name: align @ from_solved(vec)
-               for name, vec in reference["joints"].items()}
     rest_dirs = {
         name: direction(rig.data.bones[name].head_local,
                         rig.data.bones[name].tail_local)
         for name, _, _ in BONE_TARGETS
-    }
-    reference_dirs = {
-        name: direction(ref_xyz[parent], ref_xyz[child])
-        for name, parent, child in BONE_TARGETS
     }
     last_safe_dirs = {}
     low_visibility_holds = 0
@@ -362,11 +358,10 @@ def generate(source: Path, avatar: Path, output: Path,
                 low_visibility_holds += 1
                 expected = last_safe_dirs.get(name, rest_dirs[name])
             else:
-                observed_dir = direction(p[parent], p[child])
-                relative_swing = reference_dirs[name].rotation_difference(
-                    observed_dir
-                )
-                expected = relative_swing @ rest_dirs[name]
+                # One shared rigid transform preserves the source's knee
+                # and elbow flexion angles. Never force an arbitrary source
+                # frame to the avatar's neutral pose bone-by-bone.
+                expected = direction(p[parent], p[child])
                 previous = last_safe_dirs.get(name, rest_dirs[name])
                 step_deg = math.degrees(previous.angle(expected))
                 if step_deg > maximum_allowed_step_deg:
@@ -391,17 +386,17 @@ def generate(source: Path, avatar: Path, output: Path,
                 for key in curve.keyframe_points:
                     key.interpolation = "LINEAR"
 
-    # Validate the neutral-reference pose against the imported bind mesh.
-    # Basic moving-vertex tests cannot establish pose or skin correctness.
+    # Measure deformation at the camera-alignment reference frame. It is
+    # NOT a neutral/rest pose and no small-distance assertion is justified.
     neutral_fno = 1 + round((reference["timestamp_ms"] - first_ms)
                            * fps / 1000)
     scene.frame_set(neutral_fno)
     bpy.context.view_layer.update()
-    neutral_vertices = _sample_skin_vertices(mesh)
-    require(len(rest_vertices) == len(neutral_vertices),
+    reference_vertices = _sample_skin_vertices(mesh)
+    require(len(rest_vertices) == len(reference_vertices),
             "mesh topology changed during retarget")
     neutral_rest_deviation_m = max(
-        math.dist(a, b) for a, b in zip(rest_vertices, neutral_vertices)
+        math.dist(a, b) for a, b in zip(rest_vertices, reference_vertices)
     )
     scene.frame_set(1)
     editable = output / "retarget_review.blend"
@@ -443,10 +438,10 @@ def generate(source: Path, avatar: Path, output: Path,
         "rig_bones": len(rig.data.bones),
         "animated_bones": len(BONE_TARGETS),
         "method": "REAL_CAPTURE_SEGMENT_DIRECTION_RETARGET",
-        "strategy": "REFERENCE_RELATIVE_SWING_UNCALIBRATED",
+        "strategy": "SHARED_BASIS_OBSERVED_DIRECTIONS_UNCALIBRATED",
         "reference_timestamp_ms": reference["timestamp_ms"],
-        "reference_selection": "MOST_UPRIGHT_OBSERVED_NOT_VALIDATED_NEUTRAL",
-        "neutral_reference_rest_deviation_m": round(neutral_rest_deviation_m, 6),
+        "reference_selection": "MOST_UPRIGHT_OBSERVED_CAMERA_ALIGNMENT_ONLY",
+        "reference_pose_bind_mesh_deviation_m": round(neutral_rest_deviation_m, 6),
         "rest_mesh_preview": "imported_glb_rest.png",
         "low_visibility_bone_holds": low_visibility_holds,
         "temporal_swing_clamps": temporal_swing_clamps,
@@ -500,7 +495,7 @@ def generate(source: Path, avatar: Path, output: Path,
         "captured_frames": len(captured),
         "mapped_bones": len(BONE_TARGETS),
         "maximum_bone_alignment_error_degrees": round(peak_angular_error, 5),
-        "neutral_reference_rest_deviation_m": round(neutral_rest_deviation_m, 6),
+        "reference_pose_bind_mesh_deviation_m": round(neutral_rest_deviation_m, 6),
         "missing_frames_held_for_review": len(held_missing),
         "low_visibility_bone_holds": low_visibility_holds,
         "temporal_swing_clamps": temporal_swing_clamps,
