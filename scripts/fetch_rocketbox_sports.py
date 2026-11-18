@@ -71,7 +71,9 @@ def download(url: str, output: Path, expected_blob_sha: str) -> dict:
         if len(data) > 32 * 1024 * 1024:
             raise ValueError("upstream file exceeds per-file limit")
         if git_blob_sha1(data) != expected_blob_sha:
-            raise ValueError(f"upstream Git SHA mismatch: {url}")
+            raise ValueError(f"upstream Git SHA mismatch: {url}; "
+                             f"expected={expected_blob_sha} actual={git_blob_sha1(data)} "
+                             f"bytes={len(data)} preview={data[:48]!r}")
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(data)
     return {
