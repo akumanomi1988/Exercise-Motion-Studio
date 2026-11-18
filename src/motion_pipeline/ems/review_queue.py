@@ -79,9 +79,10 @@ def compile_real_video_review(male_dir: str | Path, female_dir: str | Path,
     _require(all(root.is_dir() for root in roots.values()),
              "avatar input must be directories")
     _require(roots["male"] != roots["female"], "distinct variant directories required")
-    solved_file = Path(solved_path).expanduser().resolve(strict=True)
-    # resolve(strict=True) removes symlink path identity: reject symlinks
-    # separately at the API boundary before read below.
+    unresolved_solved = Path(solved_path).expanduser()
+    _require(not unresolved_solved.is_symlink(),
+             "source skeleton path may not be a symlink")
+    solved_file = unresolved_solved.resolve(strict=True)
     solved = _read(solved_file)
     solved_digest = _hash(solved_file)
     _require(solved.get("data_type") == "INTERMEDIATE_SKELETON_NOT_FINAL_MOTION",
@@ -92,6 +93,7 @@ def compile_real_video_review(male_dir: str | Path, female_dir: str | Path,
              "input skeleton cannot be commercially approved")
     source = _sha(solved.get("source_sha256"), "video")
     model = _sha(solved.get("model_sha256"), "model")
+    issue_source_id = source + ":" + solved_digest
     frames = solved.get("frames")
     _require(isinstance(frames, list) and len(frames) >= 3,
              "actual source frames missing")
@@ -128,12 +130,30 @@ def compile_real_video_review(male_dir: str | Path, female_dir: str | Path,
         _require(manifest.get("original_video_sha256") == source
                  and manifest.get("pose_model_sha256") == model,
                  "video/model provenance mismatch")
+        _require(type(manifest.get("sample_fps")) is int
+                 and 2 <= manifest["sample_fps"] <= 30,
+                 "invalid source frame sampling frequency")
         _require(manifest.get("commercial_approval") is False
                  and report.get("commercial_approval") is False,
                  "diagnostic pipeline may not self-approve commercial rights")
         _require(manifest.get("source_frames") == len(frames)
                  and report.get("source_frames") == len(frames),
                  "source frame counts disagree")
+        # Rights provenance is not inferred from a license string alone:
+        # each generated variant must preserve the exact hashed attribution.
+        attribution = root / "SOURCE_ATTRIBUTION.txt"
+        _require(manifest.get("source_attribution_file") ==
+                 "SOURCE_ATTRIBUTION.txt" and attribution.is_file()
+                 and not attribution.is_symlink(),
+                 "source attribution file missing/unsafe")
+        _require(manifest.get("file_sha256", {})
+                 .get("SOURCE_ATTRIBUTION.txt") == _hash(attribution),
+                 "source attribution SHA does not match reviewed manifest")
+        if manifest["source_video_license"] == "CC-BY-SA-4.0":
+            text = attribution.read_text(encoding="utf-8")
+            _require("CC BY-SA 4.0" in text
+                     and "https://creativecommons.org/licenses/by-sa/4.0/" in text,
+                     "CC BY-SA derivative notice incomplete")
         _require(report.get("kinematic_fidelity") is not None,
                  "missing independently measured kinematics")
         _require(manifest.get("human_visual_review") == "PENDING"
@@ -151,6 +171,7 @@ def compile_real_video_review(male_dir: str | Path, female_dir: str | Path,
             "glb_sha256": _sha(manifest.get("file_sha256", {})
                               .get("retarget_review.glb"), "retarget GLB"),
             "technical_skin_roundtrip": report.get("technical_skinned_retarget"),
+            "source_attribution_sha256": _hash(attribution),
         }
         fidelity = report["kinematic_fidelity"]
         _require(isinstance(fidelity, dict)
@@ -162,10 +183,12 @@ def compile_real_video_review(male_dir: str | Path, female_dir: str | Path,
         _require(isinstance(all_events, list)
                  and type(count) is int and count >= len(all_events),
                  "invalid event-count evidence")
+        _require((fidelity.get("status") != "FAIL_REVIEW_REQUIRED"
+                  or count > 0), "failed kinematics lack review evidence")
         _require(count == 0 or all_events,
                  "events marked but no source evidence supplied")
         if count > len(all_events):
-            issues.append(_issue(source, variant, "EVENTS_TRUNCATED",
+            issues.append(_issue(issue_source_id, variant, "EVENTS_TRUNCATED",
                 str(count), {"total_reported": count,
                              "events_supplied": len(all_events)}))
         for event in all_events:
@@ -185,7 +208,7 @@ def compile_real_video_review(male_dir: str | Path, female_dir: str | Path,
                                 "kinematic review threshold", lower=.000001)
             _require(error > threshold,
                      "reported blocking angle is not above review threshold")
-            issues.append(_issue(source, variant, "JOINT_FLEXION_FIDELITY",
+            issues.append(_issue(issue_source_id, variant, "JOINT_FLEXION_FIDELITY",
                 f"{time}:{joint}", {
                     "timestamp_ms": time,
                     "source_frame": 1 + round((time - first_ms) *
@@ -194,12 +217,12 @@ def compile_real_video_review(male_dir: str | Path, female_dir: str | Path,
                     "limit_degrees": threshold,
                     "observed_source": "SOLVED_REVIEW_REQUIRED",
                 }))
-        issues.append(_issue(source, variant, "HUMAN_VISUAL_REVIEW_PENDING",
+        issues.append(_issue(issue_source_id, variant, "HUMAN_VISUAL_REVIEW_PENDING",
                              "visual", {"state": "PENDING"}))
-        issues.append(_issue(source, variant, "COMMERCIAL_RIGHTS_UNAPPROVED",
+        issues.append(_issue(issue_source_id, variant, "COMMERCIAL_RIGHTS_UNAPPROVED",
                              "rights", {"license": manifest["source_video_license"],
                                         "asset_rights": manifest.get("rights_review")}))
-        issues.append(_issue(source, variant, "FULL_BODY_IK_MISSING",
+        issues.append(_issue(issue_source_id, variant, "FULL_BODY_IK_MISSING",
                              "contact", {
                                  "full_body_ik": manifest.get("full_body_ik"),
                                  "foot_contacts": manifest.get("foot_contacts"),
@@ -217,7 +240,7 @@ def compile_real_video_review(male_dir: str | Path, female_dir: str | Path,
                  "invalid source outlier provenance")
         speed = _number(item.get("angular_speed_deg_per_s"),
                         "source angular speed")
-        issues.append(_issue(source, None, "SOURCE_ANGULAR_OUTLIER",
+        issues.append(_issue(issue_source_id, None, "SOURCE_ANGULAR_OUTLIER",
                              f"{ts}:{segment}", {
                                  "timestamp_ms": ts, "segment": segment,
                                  "speed_degrees_per_second": speed,
@@ -226,7 +249,7 @@ def compile_real_video_review(male_dir: str | Path, female_dir: str | Path,
     _require(type(occlusions) is int and occlusions >= 0,
              "invalid low-visibility sample count")
     if occlusions:
-        issues.append(_issue(source, None, "SOURCE_LOW_VISIBILITY",
+        issues.append(_issue(issue_source_id, None, "SOURCE_LOW_VISIBILITY",
                              str(occlusions), {
                                  "affected_segment_observations": occlusions,
                              }))
