@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import math
+import shutil
 import sys
 from pathlib import Path
 
@@ -170,6 +171,11 @@ def generate(source: Path, out: Path):
     require(path.is_file() and sha(path) == provenance["files"]["fbx"]["sha256"],
             "FBX differs from authenticated upstream")
     out.mkdir(parents=True, exist_ok=True)
+    notice = source / "UPSTREAM_LICENSE.md"
+    require(notice.is_file() and "Permission is hereby granted" in
+            notice.read_text(encoding="utf-8"),
+            "MIT permission and copyright notice not present")
+    shutil.copyfile(notice, out / "UPSTREAM_LICENSE.md")
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
     # Blender 5+ ships the new C++ FBX importer. The legacy Python operator
@@ -224,6 +230,7 @@ def generate(source: Path, out: Path):
         "variant": provenance["variant"],
         "license": "MIT",
         "license_notice": "UPSTREAM_LICENSE.md",
+        "license_notice_sha256": sha(out / "UPSTREAM_LICENSE.md"),
         "body_height_as_imported": round(float(height_m), 6),
         "armature_count": len(rigs),
         "bone_count_by_rig": {r.name: len(r.data.bones) for r in rigs},
@@ -296,6 +303,7 @@ def generate(source: Path, out: Path):
         "licenses": {
             "spdx": "MIT",
             "original_notice": "UPSTREAM_LICENSE.md",
+            "original_notice_sha256": sha(out / "UPSTREAM_LICENSE.md"),
             "source_permission": "COMMERCIAL_USE_AND_REDISTRIBUTION_WITH_NOTICE",
             "status": "PENDING",
             "distribution_approved": False,
