@@ -346,6 +346,40 @@ def generate(source: Path, avatar: Path, output: Path,
         (rig.matrix_world @ rig.pose.bones[name].tail).z
         for name in ("Bip01 L Foot", "Bip01 R Foot")
     )
+    def rig_space_diagnostic(stage, frame):
+        """Observe the FBX imported scale/rest/model matrices BEFORE any fix."""
+        bpy.context.view_layer.update()
+        items = []
+        for name in ("Bip01 Pelvis", "Bip01 Spine", "Bip01 L Thigh",
+                     "Bip01 L Calf", "Bip01 L Foot", "Bip01 R Foot"):
+            bone = rig.pose.bones[name]
+            a = rig.matrix_world @ bone.head
+            b = rig.matrix_world @ bone.tail
+            items.append({
+                "name": name,
+                "length_local": round(bone.length, 4),
+                "head_local": [round(float(x),4) for x in bone.head],
+                "head_world": [round(float(x),4) for x in a],
+                "tail_world": [round(float(x),4) for x in b],
+                "translation": [round(float(x),5) for x in bone.location],
+                "rotation": [round(float(x),5) for x in bone.rotation_quaternion],
+            })
+        report = {
+            "stage": stage, "frame": frame,
+            "rig_object_scale": [round(float(x),5) for x in rig.scale],
+            "mesh_object_scale": [round(float(x),5) for x in mesh.scale],
+            "rig_world_scale": [round(float(x),5)
+                                for x in rig.matrix_world.to_scale()],
+            "rig_world_translation": [round(float(x),5)
+                                       for x in rig.matrix_world.translation],
+            "mesh_world_scale": [round(float(x),5)
+                                 for x in mesh.matrix_world.to_scale()],
+            "rest_foot_floor_z": round(float(rest_foot_floor_z), 5),
+            "bones": items,
+        }
+        print("EMS_G1_RIG_SPACE_DIAG=" + json.dumps(report))
+        return report
+    rig_space_diagnostic("IMPORTED_GLTF_BEFORE_RETARGET", 0)
     previous_root_z = 0.0
     support_anchors = []
     support_held_frames = 0
@@ -458,6 +492,13 @@ def generate(source: Path, avatar: Path, output: Path,
             )
         else:
             support_held_frames += 1
+        if fno in (1, 10, 25, 46):
+            rig_space_diagnostic("AFTER_SWING_BEFORE_ROOT", fno)
+            print("EMS_G1_ROOT_SUPPORT_DEBUG=" + json.dumps({
+                "frame": fno, "root_vertical_m": previous_root_z,
+                "support_feet": good_feet,
+                "rest_floor": rest_foot_floor_z,
+            }))
         rig.location.z = previous_root_z
         bpy.context.view_layer.update()
         support_anchors.append({
