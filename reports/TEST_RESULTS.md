@@ -90,3 +90,9 @@ Registrar comandos y versiones para Windows 10/11, vídeos reales autorizados, r
 - `kinematic_fidelity.status=FAIL_REVIEW_REQUIRED`: error flexión máximo 85,0958°, media 20,4285°, 63 eventos >15° en 141 pares articulación/frame; rodilla izquierda máximo 67,4286°, derecha 85,0958°. **Biomecánica FALLIDA** aunque el job sea SUCCESS.
 - [Artefactos técnicos temporales #14404254672](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44253263080/artifacts/14404254672), sin licencia comercial exclusiva ni aprobación visual.
 - [Run 44253025285 FAIL](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44253025285) por `unobserved axial orientation drift: 360.000 deg` del brazo, corregido en `49720b40`. **Ningún gate G1 se declara PASS**.
+
+### Revisión directa de las imágenes reales — 2026-11-18
+
+- Descargado artifact **14404254672**, run 44253263080. Se inspeccionaron `retarget_male/retarget_review.webp` y `retarget_female/retarget_review.webp`, **8 fotogramas efectivos por avatar** (no renders sintéticos), y la imagen `retarget_male/imported_glb_rest.png`.
+- **FAIL visual:** fotogramas masculino/femenino con brazos desplazados y hombros/torso violentamente retorcidos; piernas en direcciones físicamente incompatibles con una sentadilla. El avatar base reimportado en reposo es visualmente coherente. El test de `1,59 cm` de altura de pie NO detecta estos defectos globales.
+- Estado independiente: `VISUAL_REVIEW_TECHNICAL=FAIL`; `HUMAN_COMMERCIAL_APPROVAL=PENDING`; `QA_GATE_G1=NOT_APPROVED`. Mantener el archivo original y atribución CC BY-SA 4.0 fuera de distribución comercial exclusiva.
