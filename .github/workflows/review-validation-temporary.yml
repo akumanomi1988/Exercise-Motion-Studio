@@ -1,0 +1,71 @@
+name: Temporary real-video dual rig review-queue acceptance
+
+on:
+  pull_request:
+    paths:
+      - "src/motion_pipeline/ems/review_queue.py"
+      - "src/motion_pipeline/ems/__main__.py"
+      - "tests/unit/test_review_queue.py"
+      - ".github/workflows/review-validation-temporary.yml"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  genuine-media-reports:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Download REAL MediaPipe and Blender E2E outputs, not fixtures
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p data/qa-real
+          gh run download 44266045114 \
+            --repo "${{ github.repository }}" \
+            --name real-human-male-female-skin-retarget-REVIEW-REQUIRED \
+            --dir data/qa-real
+          test -s data/qa-real/solved_skeleton.json
+          test -s data/qa-real/retarget_male/retarget_qa.json
+          test -s data/qa-real/retarget_female/retarget_qa.json
+      - name: Build fail-closed review queue from both REAL animated GLB reports
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          set -euo pipefail
+          python -m ems review-queue \
+            --male-dir data/qa-real/retarget_male \
+            --female-dir data/qa-real/retarget_female \
+            --solved data/qa-real/solved_skeleton.json \
+            --output data/qa-real/review_queue.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          q = json.loads(Path("data/qa-real/review_queue.json").read_text())
+          assert q["status"] == "REVIEW_REQUIRED" and q["release_gate"] == "BLOCKED"
+          assert q["approved"] is False and q["exercises_approved"] == 0
+          assert q["variants"] == ["male", "female"]
+          assert q["source_video_license"] == "CC-BY-SA-4.0"
+          events = [i for i in q["issues"] if i["kind"] == "JOINT_FLEXION_FIDELITY"]
+          assert len(events) == 6, events
+          assert len([i for i in q["issues"] if i["kind"] == "SOURCE_LOW_VISIBILITY"]) == 1
+          assert len([i for i in q["issues"] if i["kind"] == "SOURCE_ANGULAR_OUTLIER"]) >= 1
+          assert all(event["detail"]["error_degrees"] > 15 for event in events)
+          assert len(set(event["id"] for event in q["issues"])) == q["issue_count"]
+          print("REAL_MEDIA_REVIEW_QUEUE_PASS", q["issue_count"],
+                "real-video SHA", q["source_video_sha256"],
+                "blocking knee observations", len(events))
+          PY
+      - name: Archive actual review queue for human inspection
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-media-review-queue-unapproved
+          path: data/qa-real/review_queue.json
+          retention-days: 7
