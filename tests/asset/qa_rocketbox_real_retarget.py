@@ -15,6 +15,7 @@ from pathlib import Path
 
 import bpy
 from mathutils import Vector
+from bpy_extras.object_utils import world_to_camera_view
 
 
 def sha(path):
@@ -348,6 +349,61 @@ def measure_vertical_support(
                          bpy.context.scene.render.fps_base}
 
 
+def evaluate_real_mesh_camera_coverage(report):
+    """Inspect the exact animated .blend skinned verts against saved camera.
+
+    No screenshot checksum alone can prove feet are in the viewport. Test
+    actual evaluated vertices at the eight observed review-frame samples,
+    in Blender camera NDC; this is not a substitute for biomechanical QA.
+    """
+    scene = bpy.context.scene
+    cam = scene.camera
+    require(cam is not None and cam.data.type == "ORTHO",
+            "editable human source lacks an orthographic review camera")
+    frames = report["actual_motion_camera_framing"]["frames"]
+    require(len(frames) == 8, "expected eight independently framed source poses")
+    mesh_candidates = [
+        o for o in scene.objects if o.type == "MESH"
+        and len(o.data.vertices) > 1000
+        and any(mod.type == "ARMATURE" for mod in o.modifiers)
+    ]
+    require(mesh_candidates, "no real deformable human mesh in editable .blend")
+    body = max(mesh_candidates, key=lambda o: len(o.data.vertices))
+    bounds = []
+    for frame in frames:
+        scene.frame_set(frame)
+        bpy.context.view_layer.update()
+        dg = bpy.context.evaluated_depsgraph_get()
+        evaluated = body.evaluated_get(dg)
+        verts = evaluated.to_mesh()
+        try:
+            step = max(1, len(verts.vertices)//1000)
+            coords = [
+                world_to_camera_view(
+                    scene, cam, body.matrix_world @ verts.vertices[i].co)
+                for i in range(0,len(verts.vertices),step)
+            ]
+        finally:
+            evaluated.to_mesh_clear()
+        require(len(coords) >= 200, "insufficient captured human geometry")
+        xs = [v.x for v in coords]
+        ys = [v.y for v in coords]
+        zs = [v.z for v in coords]
+        frame_data = {
+            "frame": frame,
+            "min_u": round(min(xs),5), "max_u": round(max(xs),5),
+            "min_v": round(min(ys),5), "max_v": round(max(ys),5),
+            "closest_depth": round(min(zs),5),
+        }
+        bounds.append(frame_data)
+        require(0.01 <= min(xs) and max(xs) <= .99 and
+                .01 <= min(ys) and max(ys) <= .99 and min(zs) > 0,
+                "actual moving human cropped by camera at frame " +
+                str(frame_data))
+    return {"status":"GEOMETRY_VIEWPORT_PASS_HUMAN_VISUAL_STILL_PENDING",
+            "measured_frames":bounds}
+
+
 def inspect(folder: Path, solved: Path):
     report = json.loads((folder / "retarget_manifest.json").read_text(
         encoding="utf-8"
@@ -492,6 +548,7 @@ def inspect(folder: Path, solved: Path):
     # Reopening the editable Blender project verifies it is more than a
     # glTF roundtrip. It must contain the actual rig with an action.
     bpy.ops.wm.open_mainfile(filepath=str(folder / "retarget_review.blend"))
+    camera_coverage = evaluate_real_mesh_camera_coverage(report)
     edits = [o for o in bpy.context.scene.objects if o.type == "ARMATURE"]
     require(len(edits) == 1 and
             edits[0].animation_data and edits[0].animation_data.action,
@@ -516,6 +573,7 @@ def inspect(folder: Path, solved: Path):
     )
     result = {
         "technical_skinned_retarget": "PASS",
+        "full_body_camera_coverage": camera_coverage,
         "variant": report["variant"],
         "source_frames": report["source_frames"],
         "actual_detected_frames": report["detected_frames"],
