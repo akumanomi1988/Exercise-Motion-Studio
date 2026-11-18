@@ -38,13 +38,21 @@ def sha(path):
     return h.hexdigest()
 
 
-def support_endpoints(obj):
-    # Use actual local mesh bounds so the test survives Blender's glTF
-    # transform representation; do not trust names or metadata alone.
-    lower = min(v.co.z for v in obj.data.vertices)
-    upper = max(v.co.z for v in obj.data.vertices)
-    return (obj.matrix_world @ Vector((0, 0, lower)),
-            obj.matrix_world @ Vector((0, 0, upper)))
+def support_endpoints(obj, base, tip):
+    """Geometric cylinder endpoints in world coordinates, independent of
+    how the glTF importer rebases local mesh axes or applies object transforms.
+
+    This also screens for sideways displacement, not just axial extension.
+    """
+    axis = (tip - base).normalized()
+    points = [obj.matrix_world @ v.co for v in obj.data.vertices]
+    projected = [(p - base).dot(axis) for p in points]
+    radial = max(((point - base) - axis * longitudinal).length
+                 for point, longitudinal in zip(points, projected))
+    require(radial <= .032, f"{obj.name}: support cylinder deviates from axis "
+            f"by {radial:.5f}m at frame {bpy.context.scene.frame_current}")
+    return (base + min(projected) * axis,
+            base + max(projected) * axis)
 
 
 def snapshot():
@@ -65,12 +73,14 @@ def snapshot():
                       HINGE.z + .63 * math.sin(math.radians(angle))))
         casing = objects[f"Telescoping casing {key}"]
         rod = objects[f"Telescoping rod {key}"]
-        casing_start, casing_end = support_endpoints(casing)
-        rod_start, rod_end = support_endpoints(rod)
+        casing_start, casing_end = support_endpoints(casing, base, tip)
+        rod_start, rod_end = support_endpoints(rod, base, tip)
         require((casing_start - base).length < .025,
                 f"{key}: casing detached from base")
         require((rod_end - tip).length < .025,
-                f"{key}: telescoping rod detached from backrest")
+                f"{key}: telescoping rod detached from backrest; "
+                f"measured={tuple(round(v,4) for v in rod_end)}, "
+                f"expected={tuple(round(v,4) for v in tip)}")
         require((rod_start - (base + (tip-base).normalized() * .19)).length < .025,
                 f"{key}: telescope rod jumps from casing")
         require((casing_end - base).length > .27 and
