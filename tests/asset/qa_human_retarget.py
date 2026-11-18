@@ -266,6 +266,22 @@ def inspect(folder: Path, solved: Path):
     require(len(edits) == 1 and
             edits[0].animation_data and edits[0].animation_data.action,
             "editable Blender source lost animated skin")
+    # Differential regression: establish whether wrong knee/elbow angles
+    # are created during the Blender retarget or introduced by GLB export.
+    # Compare the same SHA-pinned human observations at identical timestamps
+    # against independently reloaded editable .blend and imported GLB.
+    blend_fidelity = measured_kinematic_fidelity(edits[0], solved, report)
+    require(blend_fidelity["observed_joint_frame_pairs"] ==
+            kinematic_fidelity["observed_joint_frame_pairs"],
+            "blend/GLB joint samples not comparable")
+    flexion_export_drift = abs(
+        blend_fidelity["max_flexion_error_degrees"] -
+        kinematic_fidelity["max_flexion_error_degrees"]
+    )
+    require(flexion_export_drift <= 1.0,
+            "GLB export changes maximum joint flexion error relative to "
+            "editable .blend beyond one degree; differential: " +
+            str(round(flexion_export_drift, 5)))
     result = {
         "technical_skinned_retarget": "PASS",
         "variant": report["variant"],
@@ -276,6 +292,10 @@ def inspect(folder: Path, solved: Path):
         "glb_skin_weights": glb_skin_weights,
         "real_mesh_deformation_span_m": round(max_mesh_displacement, 6),
         "kinematic_fidelity": kinematic_fidelity,
+        "editable_blend_kinematic_fidelity": blend_fidelity,
+        "max_joint_flexion_export_drift_degrees": round(
+            flexion_export_drift, 6
+        ),
         "vertical_foot_anchor_roundtrip": "TECHNICAL_PASS",
         "vertical_support_observed_frames": validated_support_frames,
         "vertical_support_held_frames": report["support_frames_held"],
