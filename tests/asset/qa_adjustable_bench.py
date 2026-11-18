@@ -83,7 +83,10 @@ def validate(folder: Path):
     back = find(BACK, "MESH")
     seat = find(SEAT, "MESH")
     fixed = find(FRAME, "MESH")
+    support = find("Telescoping backrest support", "MESH")
     require(back.parent == hinge, "GLB hinge-to-backrest hierarchy lost")
+    require(len(meta["kinematics"]["linkages"]) == 1,
+            "missing articulated support coupling")
 
     # glTF stores animation timestamps in *seconds*. A fresh Blender importer
     # can use 24fps even though the source scene authored at 15fps. Sampling
@@ -126,14 +129,45 @@ def validate(folder: Path):
             f"imported GLB rotation must retain real 60-degree movement: {angle}")
     require(hinge.animation_data and hinge.animation_data.action,
             "animated glTF hinge lost its bound action")
+    require(support.animation_data and support.animation_data.action,
+            "support strut lost baked linkage animation")
+    linkage = meta["kinematics"]["linkages"][0]
+    require(linkage["load_rating"] == "NOT_VERIFIED",
+            "technical QA cannot claim proven structural load rating")
+    anchor = Vector(linkage["fixed_anchor_m"])
+    socket_local = Vector(linkage["backrest_attachment_local_m"])
+    endpoint_errors = []
+    lengths = []
+    for time_s in (0.0, 0.5, 1.0, 1.5, 2.0):
+        sample = 1 + round(time_s * imported_fps)
+        bpy.context.scene.frame_set(sample)
+        bpy.context.view_layer.update()
+        socket_world = hinge.matrix_world @ socket_local
+        a = support.matrix_world @ Vector((0, 0, -0.5))
+        b = support.matrix_world @ Vector((0, 0, +0.5))
+        direct_error = max((a-anchor).length, (b-socket_world).length)
+        inverse_error = max((b-anchor).length, (a-socket_world).length)
+        endpoint_errors.append(min(direct_error, inverse_error))
+        lengths.append((a-b).length)
+    max_endpoint_error = max(endpoint_errors)
+    require(max_endpoint_error < .025,
+            f"telescoping support detaches from hinge/chassis: {max_endpoint_error:.5f} m")
+    require(max(lengths) - min(lengths) > .15,
+            "support rod does not telescope along the backrest movement")
 
-    png = bpy.data.images.load(str(folder / "preview.png"), check_existing=False)
-    require(tuple(png.size) == (720, 540), "preview dimensions wrong")
-    samples = png.pixels
-    stride = max(4, (len(samples) // 1500 // 4) * 4)
-    colors = {tuple(round(float(v), 2) for v in samples[i:i+3])
-              for i in range(0, len(samples) - 3, stride)}
-    require(len(colors) > 10, "preview is blank or visually uninformative")
+    for view in ("preview_flat.png", "preview.png", "preview_upright.png"):
+        image_path = folder / view
+        require(image_path.is_file() and image_path.stat().st_size > 10000,
+                f"missing true Blender render {view}")
+        require(sha(image_path) == meta["file_sha256"][view],
+                f"unverified render bytes for {view}")
+        png = bpy.data.images.load(str(image_path), check_existing=False)
+        require(tuple(png.size) == (720, 540), f"wrong preview dimensions: {view}")
+        samples = png.pixels
+        stride = max(4, (len(samples) // 1500 // 4) * 4)
+        colors = {tuple(round(float(v), 2) for v in samples[i:i+3])
+                  for i in range(0, len(samples) - 3, stride)}
+        require(len(colors) > 10, f"blank/uninformative Blender image {view}")
 
     glb_mesh_count = len(objects)
     bpy.ops.wm.open_mainfile(filepath=str(folder / "asset.blend"))
@@ -153,6 +187,11 @@ def validate(folder: Path):
         "glb_hinge_rotation_degrees": round(angle, 4),
         "imported_fps": imported_fps,
         "imported_end_frame_at_2_seconds": end_frame,
+        "telescoping_support_attachment_error_m": round(max_endpoint_error, 6),
+        "support_length_range_m": [
+            round(min(lengths), 5), round(max(lengths), 5)],
+        "technical_preview_views": [
+            "preview_flat.png", "preview.png", "preview_upright.png"],
         "static_frame_invariant": "PASS",
         "static_seat_invariant": "PASS",
         "preview_resolution": [720, 540],
@@ -162,6 +201,7 @@ def validate(folder: Path):
         "commercial_approval": False,
     }
     meta["qa"]["joint_animation"] = "PASS"
+    meta["qa"]["telescoping_support_qa"] = "PASS"
     meta["qa"]["roundtrip"] = "PASS"
     (folder / "asset.json").write_text(
         json.dumps(meta, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
