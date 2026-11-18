@@ -339,9 +339,13 @@ def generate(source: Path, avatar: Path, output: Path,
     support_held_frames = 0
     maximum_root_vertical_displacement = 0.0
     last_safe_dirs = {}
+    last_safe_timestamps = {}
     low_visibility_holds = 0
     temporal_swing_clamps = 0
-    maximum_allowed_step_deg = 55.
+    # A rate limit is a temporal constraint, not a limit per output frame.
+    # Reappearance after a long occlusion gets the actual elapsed time to
+    # reacquire the observed direction rather than remaining frozen.
+    maximum_allowed_speed_deg_s = 330.0
 
     first_ms = stamps[0]
     last_frame_number = 0
@@ -367,7 +371,8 @@ def generate(source: Path, avatar: Path, output: Path,
             posebone.location = (0, 0, 0)
         bpy.context.view_layer.update()
 
-        if sample.get("state") == "SOLVED_REVIEW_REQUIRED":
+        observed_now = sample.get("state") == "SOLVED_REVIEW_REQUIRED"
+        if observed_now:
             last_observed = sample
         else:
             # Hold the last OBSERVED pose explicitly through occlusion. This is
@@ -383,25 +388,27 @@ def generate(source: Path, avatar: Path, output: Path,
         }
         for posebone, parent, child in mapped:
             name = posebone.name
-            if child in unreliable:
-                # An obscured elbow/wrist/ankle is NOT replaced with an
-                # invented anatomical estimate. Hold the previous safe
-                # direction, or rest direction if never observed.
-                low_visibility_holds += 1
+            if not observed_now or child in unreliable:
+                # A missing frame is never counted as a fresh observation.
+                # Unreliable segments HOLD the last known safe direction.
+                if observed_now:
+                    low_visibility_holds += 1
                 expected = last_safe_dirs.get(name, rest_dirs[name])
             else:
-                # One shared rigid transform preserves the source's knee
-                # and elbow flexion angles. Never force an arbitrary source
-                # frame to the avatar's neutral pose bone-by-bone.
                 expected = direction(p[parent], p[child])
-                previous = last_safe_dirs.get(name, rest_dirs[name])
-                step_deg = math.degrees(previous.angle(expected))
-                if step_deg > maximum_allowed_step_deg:
-                    temporal_swing_clamps += 1
-                    expected = previous.slerp(
-                        expected, maximum_allowed_step_deg / step_deg
-                    )
+                if name in last_safe_dirs:
+                    previous = last_safe_dirs[name]
+                    dt_s = (t - last_safe_timestamps[name]) / 1000.0
+                    require(dt_s > 0, "non-monotonic reliable segment timestamp")
+                    allowed = maximum_allowed_speed_deg_s * dt_s
+                    step_deg = math.degrees(previous.angle(expected))
+                    if step_deg > allowed:
+                        temporal_swing_clamps += 1
+                        expected = previous.slerp(expected, allowed / step_deg)
+                # First visible observation has no previous measured pose:
+                # do NOT clamp it from the avatar's unrelated bind rest.
                 last_safe_dirs[name] = expected
+                last_safe_timestamps[name] = t
             err, twist_err = _set_global_direction(posebone, expected)
             peak_angular_error = max(peak_angular_error, err)
             peak_twist_error = max(peak_twist_error, twist_err)
@@ -508,7 +515,7 @@ def generate(source: Path, avatar: Path, output: Path,
         "rest_mesh_preview": "imported_glb_rest.png",
         "low_visibility_bone_holds": low_visibility_holds,
         "temporal_swing_clamps": temporal_swing_clamps,
-        "swing_step_screen_limit_degrees": maximum_allowed_step_deg,
+        "swing_angular_speed_limit_deg_per_s": maximum_allowed_speed_deg_s,
         "foot_support_strategy": "VISIBLE_LOWEST_TOE_VERTICAL_ONLY_UNCALIBRATED",
         "rest_foot_anchor_z_m": round(rest_foot_floor_z, 7),
         "support_root_animation": support_anchors,
