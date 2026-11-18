@@ -87,10 +87,13 @@ def studio():
     cam.data.ortho_scale = 1.95
     bpy.context.scene.camera = cam
     bpy.ops.mesh.primitive_plane_add(size=5, location=(0, 0, -0.016))
-    bpy.context.object.name = "Studio ground excluded from GLB"
+    floor = bpy.context.object
+    floor.name = "Studio ground excluded from GLB"
+    floor.data.materials.append(material(
+        "Inspection charcoal floor", (.042, .055, .073), 0.0, .98))
     for name, at, energy in (
-        ("Key", (-0.9, -1.0, 1.8), 650),
-        ("Fill", (1.0, 0.7, 1.5), 450),
+        ("Key", (-0.9, -1.0, 1.8), 260),
+        ("Fill", (1.0, 0.7, 1.5), 140),
     ):
         bpy.ops.object.light_add(type="AREA", location=at)
         light = bpy.context.object
@@ -99,7 +102,7 @@ def studio():
         light.data.size = 2.0
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
-    scene.cycles.samples = 12
+    scene.cycles.samples = 48
     if hasattr(scene.cycles, "use_denoising"):
         scene.cycles.use_denoising = False
     for layer in scene.view_layers:
@@ -154,9 +157,41 @@ def generate(out: Path):
     back.parent = hinge
     back.location = (.365, 0, 0)
     bpy.context.view_layer.update()
-    for frame, degrees in KEYS_DEGREES:
-        hinge.rotation_euler = (0.0, -math.radians(degrees), 0.0)
+    # One articulated telescoping link between the fixed chassis and a socket
+    # on the underside of the backrest. Bake synchronized transforms every
+    # frame so the support does not detach on glTF sampling between keyframes.
+    # Its shaft length changes; structural load bearing is NOT simulated.
+    support_anchor = Vector((.16, 0, .35))
+    socket_local = Vector((.54, 0, -.06))
+    bpy.ops.mesh.primitive_cylinder_add(
+        vertices=32, radius=.016, depth=1.0, location=(0, 0, 0),
+    )
+    support = bpy.context.object
+    support.name = "Telescoping backrest support"
+    support.data.materials.append(metal)
+    support["ems_export"] = True
+    support["part_type"] = "telescopic_support"
+    length_limits = []
+    for frame in range(1, 32):
+        degrees = (frame - 1) * 2.0
+        theta = math.radians(degrees)
+        hinge.rotation_euler = (0.0, -theta, 0.0)
         hinge.keyframe_insert(data_path="rotation_euler", frame=frame)
+        # R_y(-theta) applied to a fixed backrest-local anchor.
+        socket = Vector((
+            PIVOT[0] + socket_local.x * math.cos(theta)
+            - socket_local.z * math.sin(theta),
+            0.0,
+            PIVOT[2] + socket_local.x * math.sin(theta)
+            + socket_local.z * math.cos(theta),
+        ))
+        axis = socket - support_anchor
+        length_limits.append(axis.length)
+        support.location = (socket + support_anchor) * .5
+        support.rotation_euler = axis.to_track_quat("Z", "Y").to_euler()
+        support.scale = (1.0, 1.0, axis.length)
+        for prop in ("location", "rotation_euler", "scale"):
+            support.keyframe_insert(data_path=prop, frame=frame)
     scene = bpy.context.scene
     scene.render.fps = 15
     scene.frame_start, scene.frame_end = 1, 31
@@ -169,15 +204,22 @@ def generate(out: Path):
     png = out / "preview.png"
     bpy.ops.wm.save_as_mainfile(filepath=str(blend))
     bpy.ops.object.select_all(action="DESELECT")
-    for obj in fixed + [hinge, back]:
+    for obj in fixed + [hinge, back, support]:
         obj.select_set(True)
     bpy.context.view_layer.objects.active = hinge
     bpy.ops.export_scene.gltf(
         filepath=str(glb), export_format="GLB", use_selection=True,
         export_animations=True, export_cameras=False, export_lights=False,
     )
-    scene.render.filepath = str(png)
-    bpy.ops.render.render(write_still=True)
+    preview_files = {
+        "preview_flat.png": 1,
+        "preview.png": 23,
+        "preview_upright.png": 31,
+    }
+    for preview_name, frame in preview_files.items():
+        scene.frame_set(frame)
+        scene.render.filepath = str(out / preview_name)
+        bpy.ops.render.render(write_still=True)
     if not glb.is_file() or not png.is_file():
         raise RuntimeError("Blender did not export generated bench")
 
@@ -214,6 +256,7 @@ def generate(out: Path):
             "type": "articulated",
             "timeline_fps": 15,
             "timeline_duration_seconds": 2.0,
+            "baked_frames": 31,
             "parts": [FRAME_NAME, "Fixed seat padded surface", BACKREST_NAME],
             "joints": [
                 {"id": "backrest_recline", "part": BACKREST_NAME,
@@ -225,6 +268,18 @@ def generate(out: Path):
                     for frame, degree in KEYS_DEGREES
                  ]},
             ],
+            "linkages": [{
+                "id": "telescoping_support",
+                "part": "Telescoping backrest support",
+                "type": "prismatic_length_driver",
+                "fixed_anchor_m": list(support_anchor),
+                "backrest_attachment_local_m": list(socket_local),
+                "minimum_length_m": round(min(length_limits), 6),
+                "maximum_length_m": round(max(length_limits), 6),
+                "driven_by": "backrest_recline",
+                "length_baked_per_frame": True,
+                "load_rating": "NOT_VERIFIED",
+            }],
             "contact_solver": "NOT_IMPLEMENTED",
             "seat_backrest_collision_qa": "NOT_IMPLEMENTED",
         },
@@ -232,6 +287,7 @@ def generate(out: Path):
             "editable": "asset.blend",
             "distribution": "asset.glb",
             "thumbnail": "preview.png",
+            "technical_views": ["preview_flat.png", "preview_upright.png"],
         },
         "source": {
             "kind": "ORIGINAL_PROCEDURAL",
@@ -248,13 +304,17 @@ def generate(out: Path):
         "qa": {
             "glb_exported": True, "render_created": True,
             "joint_animation": "NOT_TESTED",
+            "telescoping_support_qa": "NOT_TESTED",
             "roundtrip": "NOT_TESTED",
             "dual_avatar_contact": "NOT_TESTED",
             "human_visual_review": "PENDING",
             "commercial_approval": False,
         },
         "file_sha256": {
-            path.name: sha(path) for path in (blend, glb, png)
+            path.name: sha(path) for path in (
+                blend, glb, png,
+                out / "preview_flat.png", out / "preview_upright.png",
+            )
         },
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
     }
