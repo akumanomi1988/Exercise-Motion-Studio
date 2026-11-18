@@ -49,6 +49,18 @@ def support_endpoints(obj, base, tip):
     projected = [(p - base).dot(axis) for p in points]
     radial = max(((point - base) - axis * longitudinal).length
                  for point, longitudinal in zip(points, projected))
+    if radial > .032:
+        print("EMS_BRACE_DIAGNOSTIC=" + json.dumps({
+            "object": obj.name,
+            "frame": bpy.context.scene.frame_current,
+            "radial_error_m": radial,
+            "base": list(base), "tip": list(tip),
+            "object_world_location": list(obj.matrix_world.translation),
+            "object_world_rotation": list(obj.matrix_world.to_quaternion()),
+            "min_max_axis_m": [min(projected), max(projected)],
+            "action": str(obj.animation_data.action.name)
+                if obj.animation_data and obj.animation_data.action else None,
+        }))
     require(radial <= .032, f"{obj.name}: support cylinder deviates from axis "
             f"by {radial:.5f}m at frame {bpy.context.scene.frame_current}")
     return (base + min(projected) * axis,
