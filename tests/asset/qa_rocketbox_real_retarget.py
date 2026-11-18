@@ -121,66 +121,89 @@ def frame_from_capture(source_frame, report, *, origin_seconds=0.0):
     return 1 + round((source_frame - 1) * current_fps / original_fps)
 
 
-def measured_joint_attachment(rig, last_frame):
-    """Verify exported REAL GLB has no detached/deformed limb hinge.
+# Rocketbox FBX edit-bone tails created by glTF import can be MANY metres
+# away from their true children. Use actual child bone HEAD joint centers.
+JOINT_ENDPOINT = {
+    "Bip01 L UpperArm": "Bip01 L Forearm",
+    "Bip01 R UpperArm": "Bip01 R Forearm",
+    "Bip01 L Forearm": "Bip01 L Hand",
+    "Bip01 R Forearm": "Bip01 R Hand",
+    "Bip01 L Thigh": "Bip01 L Calf",
+    "Bip01 R Thigh": "Bip01 R Calf",
+    "Bip01 L Calf": "Bip01 L Foot",
+    "Bip01 R Calf": "Bip01 R Foot",
+    "Bip01 L Foot": "Bip01 L Toe0",
+    "Bip01 R Foot": "Bip01 R Toe0",
+}
+ANIMATED = {
+    "Bip01 Spine", "Bip01 Spine1", "Bip01 Spine2",
+    "Bip01 L Clavicle", "Bip01 R Clavicle",
+    "Bip01 L UpperArm", "Bip01 L Forearm",
+    "Bip01 R UpperArm", "Bip01 R Forearm",
+    "Bip01 L Thigh", "Bip01 L Calf",
+    "Bip01 R Thigh", "Bip01 R Calf",
+    "Bip01 L Foot", "Bip01 R Foot", "Bip01 Neck",
+}
 
-    Motion QA cannot accept a deformable mesh merely because vertices change.
-    Rocketbox elbow/knee/ankle attachments must remain welded throughout the
-    imported timeline. Local bone translation is prohibited for this mapping.
+
+def measured_joint_attachment(rig, last_frame):
+    """True glTF articulated skeleton: check segment length invariance in METRES.
+
+    A glTF-imported Blender edit-bone.tail may point to an unrelated inferred
+    endpoint and is NOT a human joint. True parent/child heads in the glTF
+    node hierarchy are actual anatomical joints. Preserve segment lengths
+    over the FULL animation; do not invent joint-gap measurements.
     """
-    pairs = (
-        ("Bip01 L UpperArm", "Bip01 L Forearm"), ("Bip01 L Forearm", "Bip01 L Hand"),
-        ("Bip01 R UpperArm", "Bip01 R Forearm"), ("Bip01 R Forearm", "Bip01 R Hand"),
-        ("Bip01 L Thigh", "Bip01 L Calf"), ("Bip01 L Calf", "Bip01 L Foot"),
-        ("Bip01 R Thigh", "Bip01 R Calf"), ("Bip01 R Calf", "Bip01 R Foot"),
-    )
-    animated = {
-        "Bip01 Spine", "Bip01 Spine1", "Bip01 Spine2", "Bip01 L Clavicle", "Bip01 R Clavicle",
-        "Bip01 L UpperArm", "Bip01 L Forearm", "Bip01 R UpperArm", "Bip01 R Forearm",
-        "Bip01 L Thigh", "Bip01 L Calf", "Bip01 R Thigh", "Bip01 R Calf",
-        "Bip01 L Foot", "Bip01 R Foot", "Bip01 Neck",
-    }
-    require(all(name in rig.pose.bones for pair in pairs for name in pair),
-            "GLB lacks required limb attachment bones")
-    require(all(name in rig.pose.bones for name in animated),
-            "GLB lacks animated bones for local-rotation test")
-    maximum_gap = 0.0
-    maximum_local_bone_translation = 0.0
-    worst_gap = None
+    require(all(name in rig.pose.bones for name in
+                {*ANIMATED, *JOINT_ENDPOINT.values()}),
+            "missing actual anatomical linked bone heads")
+    base = {}
+    peak_delta = 0.0
+    peak_relative = 0.0
+    worst = None
+    max_local_translation = 0.0
     for fno in range(1, last_frame + 1):
         bpy.context.scene.frame_set(fno)
         bpy.context.view_layer.update()
-        for parent, child in pairs:
-            gap = (rig.pose.bones[parent].tail -
-                   rig.pose.bones[child].head).length
-            require(math.isfinite(gap), "nonfinite GLB limb joint attachment")
-            if gap > maximum_gap:
-                maximum_gap = gap
-                worst_gap = {"frame": fno, "parent": parent,
-                             "child": child, "distance_m": round(gap, 7)}
-        for name in animated:
-            translated = rig.pose.bones[name].location.length
-            require(math.isfinite(translated), "nonfinite bone location")
-            maximum_local_bone_translation = max(
-                maximum_local_bone_translation, translated
-            )
-    # A technical hinge must be fixed even before joint-angle fidelity,
-    # human appearance, IK or contact can be considered.
-    require(maximum_gap <= .03,
-            f"GLB detached joints (limit 3cm): {worst_gap}")
-    require(maximum_local_bone_translation <= .001,
-            "GLB relies on implicit non-root bone translation: " +
-            str(round(maximum_local_bone_translation, 5)))
+        for parent, child in JOINT_ENDPOINT.items():
+            # Blender armature object carries inherited FBX unit conversion,
+            # so convert BOTH joint HEADS into world metres before distance.
+            a = rig.matrix_world @ rig.pose.bones[parent].head
+            b = rig.matrix_world @ rig.pose.bones[child].head
+            distance = (a-b).length
+            require(math.isfinite(distance) and .02 <= distance <= .9,
+                    "out-of-range actual human segment length: " +
+                    f"{parent}->{child} at frame {fno}={distance:.4f}m")
+            if parent not in base:
+                base[parent] = distance
+            delta = abs(distance - base[parent])
+            relative = delta / base[parent]
+            if relative > peak_relative:
+                peak_relative = relative
+                peak_delta = delta
+                worst = {"frame": fno, "segment": parent + "->" + child,
+                         "initial_length_m": round(base[parent], 6),
+                         "current_length_m": round(distance, 6)}
+        for name in ANIMATED:
+            distance = rig.pose.bones[name].location.length
+            require(math.isfinite(distance), "nonfinite deform bone translation")
+            max_local_translation = max(max_local_translation, distance)
+    require(peak_relative <= .01,
+            f"actual human segment changed length more than 1%: {worst} "
+            f"delta={peak_relative:.6%}")
+    require(max_local_translation <= .001,
+            "deform bones acquired local translation beyond 1mm")
     return {
-        "status": "TECHNICAL_PASS",
-        "max_limb_joint_gap_m": round(maximum_gap, 7),
-        "max_nonroot_bone_translation_m": round(
-            maximum_local_bone_translation, 7
-        ),
-        "worst_gap": worst_gap,
+        "status": "SEGMENT_LENGTH_TECHNICAL_PASS",
+        "reference": "PARENT_HEAD_TO_ACTUAL_CHILD_HEAD_IN_WORLD_METRES",
+        "max_segment_length_deviation_m": round(peak_delta, 7),
+        "max_segment_length_relative_deviation": round(peak_relative, 7),
+        "max_nonroot_bone_translation_m": round(max_local_translation, 7),
+        "worst": worst,
         "checked_frames": last_frame,
         "commercial_approval": False,
     }
+
 
 def measured_kinematic_fidelity(
     rig, solved, report, *, origin_seconds=0.0
@@ -235,8 +258,11 @@ def measured_kinematic_fidelity(
             source_angle = math.degrees(source_upper.angle(source_lower))
             upper = rig.pose.bones[bone_a]
             lower = rig.pose.bones[bone_b]
-            actual_upper = upper.tail - upper.head
-            actual_lower = lower.tail - lower.head
+            # Bone tails reconstructed by Blender from imported glTF are
+            # arbitrary; glTF source joints are actual CHILD HEAD positions.
+            actual_upper = lower.head - upper.head
+            lower_end = rig.pose.bones[JOINT_ENDPOINT[bone_b]]
+            actual_lower = lower_end.head - lower.head
             require(actual_upper.length > .00001 and actual_lower.length > .00001,
                     "degenerate exported GLB joint geometry")
             output_angle = math.degrees(actual_upper.angle(actual_lower))
@@ -302,7 +328,7 @@ def measure_vertical_support(
         bpy.context.scene.frame_set(scene_frame)
         bpy.context.view_layer.update()
         toe_z = min(
-            (rig.matrix_world @ rig.pose.bones[name].tail).z
+            (rig.matrix_world @ rig.pose.bones[JOINT_ENDPOINT[name]].head).z
             for name in feet
         )
         error = abs(toe_z - floor_z)
@@ -335,6 +361,12 @@ def inspect(folder: Path, solved: Path):
             "unreviewed source cannot be approved by technical checks")
     require(report["source_video_license"] == "CC-BY-SA-4.0",
             "source license is missing")
+    require(report.get("segment_geometry_reference") ==
+            "PARENT_HEAD_TO_CHILD_HEAD_NOT_BONE_TAIL",
+            "must never use invented glTF bone tails for human biomechanics")
+    require(type(report.get("maximum_vertical_root_correction_m")) in (float, int)
+            and report["maximum_vertical_root_correction_m"] < .85,
+            "excessive human root correction: camera/scale/IK invalid")
     require(report["rig_profile"] == "ems.humanoid.rocketbox.sports.v1"
             and report.get("rig_bones") == 80,
             "human avatar must be an authentic Rocketbox 80-bone rig")
@@ -405,7 +437,7 @@ def inspect(folder: Path, solved: Path):
     require(type(floor_z) in (int, float) and math.isfinite(floor_z),
             "invalid original rest-toe reference")
     require(report.get("foot_support_strategy") ==
-            "VISIBLE_LOWEST_TOE_VERTICAL_ONLY_UNCALIBRATED",
+            "VISIBLE_LOWEST_TOE_JOINT_VERTICAL_ONLY_UNCALIBRATED",
             "unexpected ground-relative strategy")
     require(report.get("full_body_ik") == "NOT_IMPLEMENTED" and
             report["commercial_approval"] is False,
