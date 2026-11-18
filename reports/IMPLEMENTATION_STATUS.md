@@ -69,3 +69,10 @@ Hitos y trabajo futuro: [Issues del repositorio](https://github.com/akumanomi198
 - [PR #16 sigue abierta](https://github.com/akumanomi1988/Exercise-Motion-Studio/pull/16), CI técnica [44124440610 SUCCESS](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44124440610), vuelve a generar ambos GLB animados sobre avatares ya saneados.
 - **QA visual examinada del artifact 14346548007: FAIL.** Geometría de avatar corregida, pero poses/rotaciones monoculares violentas (sentadilla a una pierna) deforman cuerpo en determinados fotogramas. Fuente contiene cinco eventos de velocidad angular excesiva y oclusiones (antebrazo/codo derecho). La falta de twist, root, contacto/IK y robustez de extracción no está resuelta.
 - G1 NO APROBADO. AG1: únicamente sub-gate de generación y fidelidad GLB técnica PASS; avatar de calidad comercial aún PENDING.
+
+## G1.4 — 2026-11-18 — E2E con corrección vertical de apoyo (PR #16 NO fusionada)
+
+- Rama experimental `feat/g1-real-video-dual-skinned-retarget`: commits `a94452bc` (raíz vertical basada en dedos del pie visibles) y `c7325aa3` (medición independiente tras GLB reimportado). Otros cambios concurrentes de flexión/twist se encuentran en la misma PR, no se consideran aprobados.
+- [CI 44253263080](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44253263080) **SUCCESS técnico**: vídeo humano real Wikimedia (46/47 frames detectados), 2 GLB skinned de 53 huesos/16 mapeados, WebP animados y QA de soporte vertical. Error vertical GLB máximo 0,015859 m para los dos avatares (límite técnico 0,03 m).
+- **FALLO biomecánico independiente:** 63 observaciones de articulación sobre 15°; error máximo de flexión 85,0958° y media 20,4285°. `kinematic_fidelity.status=FAIL_REVIEW_REQUIRED` en ambos avatares. Este CI verde NO certifica corrección de movimientos.
+- G1 = **IN_PROGRESS / QA_FAILED**, AG1 = **IN_PROGRESS**, G2–G6 sin aprobación; licencias de outputs derivados CC BY-SA en revisión. Sin autorización comercial, sin `motion.json` final, sin T01–T03 completos, sin inspección visual de nuevos renders. **NO FUSIONAR PR #16** hasta superar control biomecánico y visual.
