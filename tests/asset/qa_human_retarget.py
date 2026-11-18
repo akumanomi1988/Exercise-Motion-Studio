@@ -344,10 +344,6 @@ def inspect(folder: Path, solved: Path):
         blend_fidelity["max_flexion_error_degrees"] -
         kinematic_fidelity["max_flexion_error_degrees"]
     )
-    require(flexion_export_drift <= 1.0,
-            "GLB export changes maximum joint flexion error relative to "
-            "editable .blend beyond one degree; differential: " +
-            str(round(flexion_export_drift, 5)))
     result = {
         "technical_skinned_retarget": "PASS",
         "variant": report["variant"],
@@ -363,6 +359,10 @@ def inspect(folder: Path, solved: Path):
         "max_joint_flexion_export_drift_degrees": round(
             flexion_export_drift, 6
         ),
+        "joint_angle_export_status": (
+            "TECHNICAL_PASS" if flexion_export_drift <= 1.0
+            else "FAIL_REVIEW_REQUIRED"
+        ),
         "vertical_foot_anchor_roundtrip": "TECHNICAL_PASS",
         "vertical_support_observed_frames": validated_support_frames,
         "vertical_support_held_frames": report["support_frames_held"],
@@ -375,6 +375,12 @@ def inspect(folder: Path, solved: Path):
         json.dumps(result, indent=2) + "\n", encoding="utf-8"
     )
     print("EMS_REAL_SKINNED_GLB_QA=" + json.dumps(result))
+    # Report and archive the failing differential before rejecting the run;
+    # never convert a failed GLB into PASS merely to preserve evidence.
+    require(flexion_export_drift <= 1.0,
+            "GLB export changes joint flexion beyond 1 degree, "
+            f"differential {flexion_export_drift:.5f}; "
+            "see retarget_qa.json and actual render evidence")
     return result
 
 
