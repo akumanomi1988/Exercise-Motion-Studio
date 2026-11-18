@@ -54,17 +54,20 @@ def attach_color_materials(source):
         for role, files in textures.items()
     }
     assigned = []
-    for mat in sorted(bpy.data.materials, key=lambda m: m.name):
+    # Factory-startup keeps unused materials such as 'Material' and
+    # 'Dots Stroke' in bpy.data; audit only materials referenced by the
+    # verified imported human mesh, not unused Blender factory datablocks.
+    used_materials = {
+        m for obj in bpy.context.scene.objects if obj.type == "MESH"
+        for m in obj.data.materials if m is not None
+    }
+    for mat in sorted(used_materials, key=lambda m: m.name):
         name = mat.name.lower()
         role = ("head" if "head" in name else
                 "body" if "body" in name else
                 "opacity" if "opacity" in name else None)
         if role is None:
-            # Exclude unused Blender utility materials from approval counts.
-            if mat.users:
-                raise ValueError("unrecognized used FBX material: " + mat.name)
-            assigned.append({"name": mat.name, "status": "UNUSED"})
-            continue
+            raise ValueError("unrecognized used FBX material: " + mat.name)
         require(role != "opacity" or "opacity_color" in images,
                 "hair/eyelash opacity texture required for this female mesh")
         mat.use_nodes = True
