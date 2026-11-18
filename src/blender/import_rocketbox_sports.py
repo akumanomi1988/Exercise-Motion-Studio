@@ -231,6 +231,81 @@ def generate(source: Path, out: Path):
         "human_visual_approval": "PENDING",
         "commercial_asset_approval": False,
     }
+    # AssetCatalog schema: imported third-party skinned human with original
+    # MIT provenance, no invented rigidbody/IK or distribution signoff.
+    low, high = minmax
+    avatar_id = f"ems.avatar.rocketbox.sports.{provenance['variant']}.01"
+    manifest = {
+        "schema_version": "1.0",
+        "asset_id": avatar_id,
+        "version": "0.1.0",
+        "category": "human_avatar",
+        "subcategory": "sports_adult",
+        "variant": provenance["variant"],
+        "unit": "meter",
+        "dimensions_m": {
+            "length_x": round(high.x - low.x, 6),
+            "width_y": round(high.y - low.y, 6),
+            "height_z": round(high.z - low.z, 6),
+        },
+        "coordinate_system": "Blender Z-up meters (glTF normalized Y-up)",
+        "rig": {
+            "profile_id": "ems.humanoid.rocketbox.sports.v1",
+            "bones": len(rigs[0].data.bones),
+            "skin_weights": "PRESENT_NOT_RETARGET_VALIDATED",
+            "deformation_review": "PENDING_GLTF_QA",
+        },
+        "grip_points": [],
+        "attachment_points": [
+            {
+                "id": ident,
+                "position_m": [round(float(v), 6) for v in
+                               (rigs[0].matrix_world @ rigs[0].pose.bones[bone].head)]
+            }
+            for ident, bone in (
+                ("left_wrist", "Bip01 L Hand"),
+                ("right_wrist", "Bip01 R Hand"),
+                ("left_ankle", "Bip01 L Foot"),
+                ("right_ankle", "Bip01 R Foot"),
+            )
+        ],
+        "contact_surfaces": [],
+        "collision_shapes": [],
+        "kinematics": {"type": "deformable_humanoid",
+                       "retarget_qa": "NOT_TESTED",
+                       "ik": "NOT_IMPLEMENTED"},
+        "models": {"editable": "source.blend",
+                   "distribution": "avatar.glb",
+                   "thumbnail": "rest_review.png"},
+        "source": {
+            "kind": "VERIFIED_THIRD_PARTY",
+            "upstream_repository": provenance["upstream_repository"],
+            "upstream_commit": provenance["upstream_commit"],
+            "source_file": provenance["files"]["fbx"]["relative_path"],
+            "source_sha256": provenance["files"]["fbx"]["sha256"],
+            "license_notice": "UPSTREAM_LICENSE.md",
+        },
+        "licenses": {
+            "spdx": "MIT",
+            "original_notice": "UPSTREAM_LICENSE.md",
+            "source_permission": "COMMERCIAL_USE_AND_REDISTRIBUTION_WITH_NOTICE",
+            "status": "PENDING",
+            "distribution_approved": False,
+            "reviewer": None,
+        },
+        "qa": {"roundtrip": "NOT_TESTED",
+               "human_visual_review": "PENDING",
+               "commercial_approval": False},
+        "file_sha256": {
+            "source.blend": data["editable_blend_sha256"],
+            "avatar.glb": data["exported_glb_sha256"],
+            "rest_review.png": data["preview_png_sha256"],
+        },
+    }
+    (out / "asset.json").write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False)+"\n",
+        encoding="utf-8",
+    )
     (out / "import_report.json").write_text(
         json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print("EMS_ROCKETBOX_IMPORTED=" + json.dumps({
