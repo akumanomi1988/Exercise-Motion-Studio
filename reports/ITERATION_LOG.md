@@ -81,3 +81,13 @@ Próxima ejecución: verificación Windows, revisión de licencias/pesos, contra
 - Aislamiento diferencial de artefactos: el .blend MakeHuman mostraba miembros normales, el GLB importado contenía geometría helper de falda/cabello no visible en source render. El test anterior de skin validaba huesos y pesos, pero no comparaba superficie en bind-rest.
 - PR #18: `export_apply=True` al glTF export aplica Mask y elimina helpers preservando Armature. GLB male 949312 bytes, female 948912 bytes; 53 huesos, skin deformación real, CI 44124085638 PASS. Comparador de superficies (KDTree) fuente 13380 vértices evaluados / GLB 14765 con material splits: p95=0,0000005 m, p99=0,0000007 m, máximo=0,0000007 m ambos avatares.
 - PR #16 retarget rerun 44124440610 SUCCESS técnica con GLB saneados. Artefacto 14346548007 inspeccionado con 8 imágenes por avatar: desaparece geometría de falda, PERO movimientos de hombros, tronco, cadera y piernas en ciertos fotogramas siguen biomecánicamente incorrectos. No fusionar PR #16 hasta solucionar referencia-neutral/rotation-swing y oclusión. Ni G1 ni comercial aprobados.
+
+## G1.4 — 2026-11-18 — raíz vertical del avatar y test GLB de contacto parcial
+
+1. Se comprobó `main=81c1e3b5`, informes, política de licencias, PR #16 e historial de CI. Últimos renders de retarget permanecían rechazados visualmente.
+2. En PR #16 se añadió raíz Z desde el dedo del pie visible más bajo, con retención explícita ante oclusión (`a94452bc`); no infiere root absoluto ni bloquea pies en el plano horizontal.
+3. Se añadió QA estricta tras **reimportar** GLB: error máximo de altura del apoyo <=0,03 m en todas las observaciones válidas, además de procedencia y derechos bloqueantes (`c7325aa3`).
+4. [CI 44253025285](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44253025285) FAIL antes de exportación por cuaterniones equivalentes 0°/360° interpretados como torsión; otra corrección de la rama `49720b40` lo solventó sin desactivar la comprobación.
+5. [CI 44253263080](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44253263080) SUCCESS técnico, 2 avatares/GLB/WebP, pero nuevo control de fidelidad detecta 63 eventos con desviación angular >15°, hasta 85,0958°.
+6. Se añadió comparación diferencial entre el editable `.blend` y GLB exportado (`bee66d84`, pendiente de resultado en el momento de este registro) para distinguir fallo de retarget respecto a fallo de exportación. No usar `run success` como aprobación G1.
+7. No hubo publicación de assets comerciales ni modificaciones de Anvil Fitness/Supabase.
