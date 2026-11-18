@@ -157,6 +157,56 @@ class ReviewQueueContractTests(unittest.TestCase):
         with self.assertRaisesRegex(InputValidationError, "commercial rights"):
             self.inspect()
 
+    def enable_rocketbox_head_qa(self):
+        for folder in (self.male, self.female):
+            notice = folder / "UPSTREAM_LICENSE.md"
+            notice.write_text(
+                "Copyright (c) 2020 Microsoft\nMIT License\n"
+                "Permission is hereby granted...\n", encoding="utf-8"
+            )
+            meta = json.loads((folder / "retarget_manifest.json").read_text())
+            meta.update({
+                "rig_profile": "ems.humanoid.rocketbox.sports.v1",
+                "rig_bones": 80,
+                "avatar_source_license": "MIT",
+                "avatar_source_license_file": "UPSTREAM_LICENSE.md",
+                "avatar_source_license_sha256": self.hash(notice),
+            })
+            self.save(folder / "retarget_manifest.json", meta)
+            qa = json.loads((folder / "retarget_qa.json").read_text())
+            qa["joint_attachment"] = {
+                "status": "SEGMENT_LENGTH_TECHNICAL_PASS",
+                "reference": "PARENT_HEAD_TO_ACTUAL_CHILD_HEAD_IN_WORLD_METRES",
+                "max_segment_length_relative_deviation": 0.0000014,
+                "max_nonroot_bone_translation_m": 0.0000198,
+            }
+            self.save(folder / "retarget_qa.json", qa)
+
+    def test_rocketbox_real_segment_contract_still_never_approves(self):
+        self.enable_rocketbox_head_qa()
+        queue = self.inspect()
+        self.assertEqual(queue["release_gate"], "BLOCKED")
+        self.assertEqual(queue["exercises_approved"], 0)
+        self.assertEqual({x["variant"] for x in queue["issues"]
+                          if x["kind"] == "JOINT_FLEXION_FIDELITY"},
+                         {"male", "female"})
+
+    def test_rocketbox_fails_closed_on_mit_notice_tamper(self):
+        self.enable_rocketbox_head_qa()
+        (self.female / "UPSTREAM_LICENSE.md").write_text("bad notice")
+        with self.assertRaisesRegex(InputValidationError, "MIT notice hash"):
+            self.inspect()
+
+    def test_rocketbox_rejects_unsafe_anatomical_segment_drift(self):
+        self.enable_rocketbox_head_qa()
+        p = self.male / "retarget_qa.json"
+        qa = json.loads(p.read_text())
+        qa["joint_attachment"]["max_segment_length_relative_deviation"] = .015
+        self.save(p, qa)
+        with self.assertRaisesRegex(InputValidationError, "changed length"):
+            self.inspect()
+
+
 
 if __name__ == "__main__":
     unittest.main()

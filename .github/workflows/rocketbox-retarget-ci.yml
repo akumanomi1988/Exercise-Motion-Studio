@@ -1,0 +1,141 @@
+name: G1 real licensed video to Rocketbox male female GLB diagnostic
+
+on:
+  pull_request:
+    paths:
+      - 'src/blender/retarget_rocketbox_sports.py'
+      - 'tests/asset/qa_rocketbox_real_retarget.py'
+      - 'scripts/encode-rocketbox-retarget-preview.py'
+      - 'scripts/fetch_rocketbox_sports.py'
+      - 'src/blender/import_rocketbox_sports.py'
+      - 'assets/rig_profiles/rocketbox_sports_humanoid_v1.json'
+      - 'src/motion_pipeline/ems/review_queue.py'
+      - 'tests/unit/test_review_queue.py'
+      - '.github/workflows/rocketbox-retarget-ci.yml'
+      - 'reports/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-squat-dual-rocketbox-skin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile retarget programs and install exact MediaPipe and Blender
+        run: |
+          set -euo pipefail
+          python -m py_compile src/blender/retarget_rocketbox_sports.py tests/asset/qa_rocketbox_real_retarget.py scripts/encode-rocketbox-retarget-preview.py
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends ffmpeg libgles2 libegl1 libgl1 blender python3-numpy python3-pil
+          python -m pip install -r requirements-pose.txt Pillow==12.0.0
+          blender --version | head -n 2
+      - name: Get original pinned authorized Wikimedia exercise video and Google full pose model
+        run: |
+          set -euo pipefail
+          mkdir -p data/qa-inference/models
+          curl --fail --location --retry 3 --max-time 90 \
+            https://upload.wikimedia.org/wikipedia/commons/1/16/Basic_single_leg_squat.webm \
+            -o data/qa-inference/real_single_leg_squat.webm
+          curl --fail --location --retry 3 --max-time 120 \
+            https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task \
+            -o data/qa-inference/models/pose_landmarker_full.task
+          echo 'ab4602823ad00de3409eb50d2c65c6b1ce5566c5dca6753555ff2b19107db88e  data/qa-inference/real_single_leg_squat.webm' | sha256sum -c
+          echo '5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1  data/qa-inference/models/pose_landmarker_full.task' | sha256sum -c
+          git check-ignore -q data/qa-inference/real_single_leg_squat.webm
+          git check-ignore -q data/qa-inference/models/pose_landmarker_full.task
+      - name: Real MediaPipe inference plus solved 3D skeleton (not a synthetic fixture)
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          set -euo pipefail
+          python tests/integration/smoke_real_pose.py \
+            --video data/qa-inference/real_single_leg_squat.webm \
+            --model data/qa-inference/models/pose_landmarker_full.task \
+            --model-sha256 5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1 \
+            --qa-output data/qa-inference
+      - name: Download two exact Microsoft MIT original sports humans with upstream hash verification
+        run: |
+          set -euo pipefail
+          python scripts/fetch_rocketbox_sports.py \
+            --output-dir data/vendor/rocketbox_sports --variant both
+          grep -q 'Permission is hereby granted' data/vendor/rocketbox_sports/male/UPSTREAM_LICENSE.md
+          grep -q 'Permission is hereby granted' data/vendor/rocketbox_sports/female/UPSTREAM_LICENSE.md
+      - name: Build source human rigs and verify real static GLB skins
+        run: |
+          set -euo pipefail
+          for variant in male female; do
+            blender -b --factory-startup --python-exit-code 10 \
+              --python src/blender/import_rocketbox_sports.py -- \
+              --source-dir "data/vendor/rocketbox_sports/$variant" \
+              --output-dir "data/generated_avatars/rocketbox_sports/$variant"
+            blender -b --factory-startup --python-exit-code 10 \
+              --python tests/asset/qa_rocketbox_sports.py -- \
+              --source-dir "data/vendor/rocketbox_sports/$variant" \
+              --output-dir "data/generated_avatars/rocketbox_sports/$variant"
+          done
+      - name: Apply actual licensed captured motion to both 80-bone animated human skins
+        run: |
+          set -euo pipefail
+          for variant in male female; do
+            blender -b --factory-startup --python-exit-code 10 \
+              --python src/blender/retarget_rocketbox_sports.py -- \
+              --solved data/qa-inference/solved_skeleton.json \
+              --attribution data/qa-inference/SOURCE_ATTRIBUTION.txt \
+              --avatar-dir "data/generated_avatars/rocketbox_sports/$variant" \
+              --output-dir "data/qa-inference/rocketbox_retarget_$variant" \
+              --fps 6
+          done
+      - name: Validate real animated skin GLB, biomechanical joint angles and Blender versus GLB drift
+        run: |
+          set -euo pipefail
+          for variant in male female; do
+            root="data/qa-inference/rocketbox_retarget_$variant"
+            python scripts/encode-rocketbox-retarget-preview.py --output-dir "$root"
+            blender -b --factory-startup --python-exit-code 10 \
+              --python tests/asset/qa_rocketbox_real_retarget.py -- \
+              --output-dir "$root" \
+              --solved data/qa-inference/solved_skeleton.json
+          done
+      - name: Compile an immutable review queue for real video temporal, knee, IK and rights blockers
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          set -euo pipefail
+          python -m ems review-queue \
+            --male-dir data/qa-inference/rocketbox_retarget_male \
+            --female-dir data/qa-inference/rocketbox_retarget_female \
+            --solved data/qa-inference/solved_skeleton.json \
+            --output data/qa-inference/rocketbox_review_queue.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('data/qa-inference/rocketbox_review_queue.json')
+          d = json.loads(p.read_text())
+          assert d["status"] == "REVIEW_REQUIRED"
+          assert d["release_gate"] == "BLOCKED"
+          assert d["exercises_approved"] == 0
+          assert d["issue_count"] >= 6
+          print("G1_ROCKETBOX_FAIL_CLOSED_REVIEW_QUEUE=" + json.dumps(
+              {"issues": d["issue_count"],"release_gate":d["release_gate"]}
+          ))
+          PY
+      - name: Always retain REAL video-derived human motion evidence for visual failure diagnosis
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g1-real-video-rocketbox-male-female-review-not-approved
+          if-no-files-found: warn
+          path: |
+            data/qa-inference/SOURCE_ATTRIBUTION.txt
+            data/qa-inference/rocketbox_review_queue.json
+            data/qa-inference/solved_skeleton.json
+            data/qa-inference/rocketbox_retarget_male/
+            data/qa-inference/rocketbox_retarget_female/
+          retention-days: 7
