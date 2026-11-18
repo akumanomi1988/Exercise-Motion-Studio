@@ -136,7 +136,7 @@ def generate(source: Path, out: Path):
     out.mkdir(parents=True, exist_ok=True)
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
-    bpy.ops.import_scene.fbx(filepath=str(path), use_image_search=True)
+    bpy.ops.import_scene.fbx(filepath=str(path))
     rigs = [o for o in bpy.context.scene.objects if o.type == "ARMATURE"]
     meshes = [o for o in bpy.context.scene.objects if o.type == "MESH"]
     print("EMS_ROCKETBOX_IMPORT_DETAILS=" + json.dumps({
@@ -189,7 +189,7 @@ def generate(source: Path, out: Path):
         "weighted_vertices_by_mesh": {
             m.name: sum(bool(v.groups) for v in m.data.vertices) for m in valid_skin},
         "material_bindings": materials,
-        "actual_source_bounds_xyz": minmax,
+        "actual_source_bounds_xyz": [list(map(float, bound)) for bound in minmax],
         "editable_blend_sha256": sha(editable),
         "exported_glb_sha256": sha(glb),
         "preview_png_sha256": sha(preview),
