@@ -47,6 +47,8 @@ FILE_SPECS = {
                         "9922df7cdb1f7dd3dd3bdede4d62ed04c5eae47d"),
         "head_normal": ("Textures/f013_head_normal.tga",
                         "92ea37320c8f0bff33fa1959f5820a190a5d72d9"),
+        "opacity_color": ("Textures/f013_opacity_color.tga",
+                          "8897f1280689b5aab5ed6ea089880a3a7d17319c"),
     },
 }
 LICENSE_BLOB_SHA1 = "9bcfb3ece5301a55d3a41bbd00a029ab27d61d13"
@@ -93,7 +95,9 @@ def acquire(root: Path, variants: tuple[str, ...]) -> None:
         folder.mkdir(parents=True, exist_ok=True)
         files = {}
         for role in ("fbx", "reference", "body_color", "head_color",
-                     "body_normal", "head_normal"):
+                     "body_normal", "head_normal", "opacity_color"):
+            if role not in specification:
+                continue
             rel, blobsha = specification[role]
             url = BASE + f"Assets/Avatars/Professions/{ident}/" + rel
             path = folder / rel
