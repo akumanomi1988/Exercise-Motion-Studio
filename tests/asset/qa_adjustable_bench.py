@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import math
+import struct
 import sys
 from pathlib import Path
 
@@ -132,6 +133,43 @@ def read_animation(label, angle_start, angle_peak):
     return samples
 
 
+def inspect_gltf_clip(glb_path):
+    """Inspect actual glTF binary: all five moving parts must be driven by
+    the SAME glTF animation, not independent clips that a viewer won't play
+    together. No fake file or Blender-local action checks suffice.
+    """
+    with glb_path.open("rb") as stream:
+        header = stream.read(20)
+        require(len(header) == 20, "GLB header truncated")
+        magic, version, total_bytes, json_size, json_type = struct.unpack(
+            "<4sIIII", header
+        )
+        require(magic == b"glTF" and version == 2
+                and json_type == 0x4E4F534A,
+                "GLB must contain glTF2 JSON chunk")
+        require(total_bytes == glb_path.stat().st_size
+                and 100 <= json_size < total_bytes,
+                "GLB declared lengths are corrupt")
+        content = json.loads(stream.read(json_size).decode("utf-8"))
+    animations = content.get("animations", [])
+    require(len(animations) == 1,
+            f"expected one synchronized gym-machine clip, got {len(animations)}")
+    nodes = content.get("nodes", [])
+    targets = {
+        nodes[ch["target"]["node"]]["name"]
+        for ch in animations[0]["channels"]
+    }
+    require(set(PARTS).issubset(targets),
+            f"GLB clip omitted real moving machine parts: {set(PARTS) - targets}")
+    require(len(animations[0]["channels"]) >= len(PARTS),
+            "GLB machinery animation has missing channels")
+    return {
+        "animations": len(animations),
+        "channels": len(animations[0]["channels"]),
+        "animated_required_parts": sorted(set(PARTS) & targets),
+    }
+
+
 def inspect(root):
     manifest_file = root / "asset.json"
     meta = json.loads(manifest_file.read_text(encoding="utf-8"))
@@ -155,6 +193,7 @@ def inspect(root):
         require(path.is_file() and path.stat().st_size > 1024 and
                 sha(path) == digest, "missing or altered artifact: " + name)
 
+    gltf_clip = inspect_gltf_clip(root / "asset.glb")
     bpy.ops.wm.open_mainfile(filepath=str(root / "asset.blend"))
     source_parts = [o for o in bpy.data.objects if o.get("ems_export")]
     require(len(source_parts) == 19, "source bench has missing procedural parts")
@@ -202,6 +241,7 @@ def inspect(root):
             max(math.dist(source[f]["backrest_tip_m"],
                           glb[f]["backrest_tip_m"]) for f in SAMPLES), 6),
         "kinematic_bounds_status": "PASS",
+        "gltf_synchronized_clip": gltf_clip,
         "telescoping_support_endpoints": "PASS",
         "human_contact_with_both_avatars": "NOT_TESTED",
         "structural_load_rating": "NOT_CERTIFIED",
