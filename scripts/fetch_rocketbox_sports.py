@@ -44,7 +44,7 @@ FILE_SPECS = {
         "head_color": ("Textures/f021_head_color.tga",
                        "cb4258da46d21ef5ae2b3017cefba6b5bf5d3acc"),
         "body_normal": ("Textures/f021_body_normal.tga",
-                        "8c65fe177ce466e2847db870f879e8a2fc409b1"),
+                        "8c65fe177ce466e2847db870f879e8a2fc409b1c"),
         "head_normal": ("Textures/f021_head_normal.tga",
                         "804553aad3323cdd88e54fab62bbc3a25b4f20bc"),
     },
