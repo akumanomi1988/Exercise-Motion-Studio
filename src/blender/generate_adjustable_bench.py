@@ -234,7 +234,13 @@ def generate(output: Path, back_angle_deg: int):
     bpy.context.view_layer.objects.active = back
     bpy.ops.export_scene.gltf(
         filepath=str(glb), export_format="GLB", use_selection=True,
-        export_animations=True, export_cameras=False, export_lights=False,
+        export_animations=True,
+        # ACTIONS (default) exports independent clips for pad and brace objects;
+        # glTF viewers then play only one active clip and braces detach.
+        # ACTIVE_ACTIONS merges simultaneously assigned object actions into
+        # one shared timeline. Never silently allow separated machine parts.
+        export_animation_mode="ACTIVE_ACTIONS",
+        export_cameras=False, export_lights=False,
     )
     scene.render.filepath = str(preview)
     bpy.ops.render.render(write_still=True)
