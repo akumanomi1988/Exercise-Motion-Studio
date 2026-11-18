@@ -42,6 +42,28 @@ BONE_TARGETS = (
 )
 _SPINE_BLEND = {"Bip01 Spine": 1./3., "Bip01 Spine1": 1./2.,
                 "Bip01 Spine2": 1.0}
+# Blender glTF import fabricates tail lengths for joints with no explicitly
+# connected Blender edit-bone. On Rocketbox, e.g. calf.tail spans >16m while
+# calf.head→foot.head is ~0.4m. Never use posebone.tail to infer a segment.
+# These endpoints are TRUE child-joint origins in the same imported armature.
+JOINT_ENDPOINT = {
+    "Bip01 Spine": "Bip01 Spine1",
+    "Bip01 Spine1": "Bip01 Spine2",
+    "Bip01 Spine2": "Bip01 Neck",
+    "Bip01 Neck": "Bip01 Head",
+    "Bip01 L Clavicle": "Bip01 L UpperArm",
+    "Bip01 R Clavicle": "Bip01 R UpperArm",
+    "Bip01 L UpperArm": "Bip01 L Forearm",
+    "Bip01 R UpperArm": "Bip01 R Forearm",
+    "Bip01 L Forearm": "Bip01 L Hand",
+    "Bip01 R Forearm": "Bip01 R Hand",
+    "Bip01 L Thigh": "Bip01 L Calf",
+    "Bip01 R Thigh": "Bip01 R Calf",
+    "Bip01 L Calf": "Bip01 L Foot",
+    "Bip01 R Calf": "Bip01 R Foot",
+    "Bip01 L Foot": "Bip01 L Toe0",
+    "Bip01 R Foot": "Bip01 R Toe0",
+}
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
 
 
@@ -106,7 +128,7 @@ def infer_alignment(frames: list[dict], rig) -> Matrix:
     source_basis = basis(lateral, up)
     bones = rig.data.bones
     rest_lateral = bones["Bip01 L UpperArm"].head_local - bones["Bip01 R UpperArm"].head_local
-    rest_up = bones["Bip01 Spine2"].tail_local - bones["Bip01 Pelvis"].head_local
+    rest_up = bones["Bip01 Spine2"].head_local - bones["Bip01 Pelvis"].head_local
     rig_basis = basis(rest_lateral, rest_up)
     transform = rig_basis @ source_basis.transposed()
     require(abs(transform.determinant() - 1) < 1e-3,
@@ -149,10 +171,12 @@ def _find_real_skin():
     mesh = max(meshes, key=lambda item: len(item.data.vertices))
     require(sum(bool(v.groups) for v in mesh.data.vertices) > 1000,
             "mesh has no actual skin weights")
+    require(all(x in rig.pose.bones for x in JOINT_ENDPOINT.values()),
+            "Rocketbox skinned human is missing actual child anatomical joints")
     return rig, mesh
 
 
-def _set_global_direction(posebone, desired: Vector):
+def _set_global_direction(posebone, endpoint, desired: Vector):
     """Aim a bone using ONLY a local quaternion; never write posebone.matrix.
 
     Setting posebone.matrix as an armature-global absolute transform can set
@@ -168,7 +192,7 @@ def _set_global_direction(posebone, desired: Vector):
             "a deform bone acquired a translation before retarget")
     bpy.context.view_layer.update()
     before_orientation = posebone.matrix.to_quaternion()
-    current = direction(posebone.head, posebone.tail)
+    current = direction(posebone.head, endpoint.head)
     swing_armature = current.rotation_difference(desired)
     # R_after = R_before * R_local, and the required world-space
     # orientation is swing_armature * R_before. Conjugate into the bone's
@@ -179,7 +203,7 @@ def _set_global_direction(posebone, desired: Vector):
         swing_local @ posebone.rotation_quaternion
     ).normalized()
     bpy.context.view_layer.update()
-    actual = direction(posebone.head, posebone.tail)
+    actual = direction(posebone.head, endpoint.head)
     angular_error = math.degrees(actual.angle(desired))
     require(math.isfinite(angular_error) and angular_error < .5,
             f"bone {posebone.name} failed local swing aim: "
@@ -241,7 +265,7 @@ def _sample_skin_vertices(mesh):
     geometry = evaluated.to_mesh()
     try:
         step = max(1, len(geometry.vertices) // 300)
-        return [tuple(geometry.vertices[i].co)
+        return [tuple(mesh.matrix_world @ geometry.vertices[i].co)
                 for i in range(0, len(geometry.vertices), step)]
     finally:
         evaluated.to_mesh_clear()
@@ -333,7 +357,7 @@ def generate(source: Path, avatar: Path, output: Path,
     align = infer_alignment([reference], rig)
     rest_dirs = {
         name: direction(rig.data.bones[name].head_local,
-                        rig.data.bones[name].tail_local)
+                        rig.data.bones[JOINT_ENDPOINT[name]].head_local)
         for name, _, _ in BONE_TARGETS
     }
     # A fixed hip/root makes a squat's feet intersect the ground as the
@@ -343,7 +367,7 @@ def generate(source: Path, avatar: Path, output: Path,
     rig.location.z = 0.0
     bpy.context.view_layer.update()
     rest_foot_floor_z = min(
-        (rig.matrix_world @ rig.pose.bones[name].tail).z
+        (rig.matrix_world @ rig.pose.bones[JOINT_ENDPOINT[name]].head).z
         for name in ("Bip01 L Foot", "Bip01 R Foot")
     )
     def rig_space_diagnostic(stage, frame):
@@ -380,6 +404,13 @@ def generate(source: Path, avatar: Path, output: Path,
         print("EMS_G1_RIG_SPACE_DIAG=" + json.dumps(report))
         return report
     rig_space_diagnostic("IMPORTED_GLTF_BEFORE_RETARGET", 0)
+    max_rest_model_segment_m = max(
+        (rig.matrix_world.to_scale()[0] *
+         (rig.pose.bones[JOINT_ENDPOINT[name]].head-rig.pose.bones[name].head).length)
+        for name in JOINT_ENDPOINT
+    )
+    require(max_rest_model_segment_m < .8,
+            "world-meter segment head-to-child scale invalid: " + str(max_rest_model_segment_m))
     previous_root_z = 0.0
     support_anchors = []
     support_held_frames = 0
@@ -462,13 +493,16 @@ def generate(source: Path, avatar: Path, output: Path,
                 # angle in each spinal segment. No synthetic observation is
                 # introduced: the shared desired orientation comes from
                 # the same real MediaPipe pelvis->chest measurement.
-                current_spine = direction(posebone.head, posebone.tail)
+                current_spine = direction(posebone.head,
+                                          rig.pose.bones[JOINT_ENDPOINT[name]].head)
                 angle_to_target = current_spine.angle(expected)
                 if angle_to_target > 1e-6:
                     expected = current_spine.slerp(
                         expected, _SPINE_BLEND[name]
                     ).normalized()
-            err, twist_err = _set_global_direction(posebone, expected)
+            err, twist_err = _set_global_direction(
+                posebone, rig.pose.bones[JOINT_ENDPOINT[name]], expected
+            )
             peak_angular_error = max(peak_angular_error, err)
             peak_twist_error = max(peak_twist_error, twist_err)
         # The lower VISIBLE toe approximates a support anchor; when both toes
@@ -483,7 +517,7 @@ def generate(source: Path, avatar: Path, output: Path,
         bpy.context.view_layer.update()
         if good_feet:
             lowest_toe_z = min(
-                (rig.matrix_world @ rig.pose.bones[name].tail).z
+                (rig.matrix_world @ rig.pose.bones[JOINT_ENDPOINT[name]].head).z
                 for name in good_feet
             )
             previous_root_z = rest_foot_floor_z - lowest_toe_z
@@ -573,6 +607,7 @@ def generate(source: Path, avatar: Path, output: Path,
         "variant": variant,
         "rig_profile": "ems.humanoid.rocketbox.sports.v1",
         "rig_bones": len(rig.data.bones),
+        "max_rest_child_segment_length_m": round(max_rest_model_segment_m, 6),
         "avatar_source_license": "MIT",
         "avatar_source_license_file": "UPSTREAM_LICENSE.md",
         "avatar_source_license_sha256": hashfile(output / "UPSTREAM_LICENSE.md"),
@@ -588,7 +623,8 @@ def generate(source: Path, avatar: Path, output: Path,
         "low_visibility_bone_holds": low_visibility_holds,
         "temporal_swing_clamps": temporal_swing_clamps,
         "swing_angular_speed_limit_deg_per_s": maximum_allowed_speed_deg_s,
-        "foot_support_strategy": "VISIBLE_LOWEST_TOE_VERTICAL_ONLY_UNCALIBRATED",
+        "foot_support_strategy": "VISIBLE_LOWEST_TOE_JOINT_VERTICAL_ONLY_UNCALIBRATED",
+        "segment_geometry_reference": "PARENT_HEAD_TO_CHILD_HEAD_NOT_BONE_TAIL",
         "rest_foot_anchor_z_m": round(rest_foot_floor_z, 7),
         "support_root_animation": support_anchors,
         "support_frames_held": support_held_frames,
