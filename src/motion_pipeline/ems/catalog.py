@@ -97,14 +97,27 @@ def inspect_asset_folder(folder: str | Path, require_commercial: bool = False) -
     shapes = data.get("collision_shapes")
     _check(isinstance(shapes, list), "collision_shapes must be a list")
     for shape in shapes:
-        _check(isinstance(shape, dict) and shape.get("shape") == "cylinder",
-               "only cylinder collision primitives currently supported")
+        _check(isinstance(shape, dict) and
+               shape.get("shape") in {"cylinder", "box"},
+               "collision primitive must be cylinder or oriented box")
         _vector(shape.get("center_m"), "collision center")
-        _vector(shape.get("axis"), "collision axis", unit_axis=True)
-        for key in ("radius_m", "length_m"):
-            v = shape.get(key)
-            _check(type(v) in (int, float) and math.isfinite(v) and v > 0,
-                   f"invalid collider {key}")
+        if shape["shape"] == "cylinder":
+            _vector(shape.get("axis"), "collision axis", unit_axis=True)
+            for key in ("radius_m", "length_m"):
+                v = shape.get(key)
+                _check(type(v) in (int, float) and math.isfinite(v) and v > 0,
+                       f"invalid collider {key}")
+        else:
+            size = shape.get("size_m")
+            _vector(size, "box collision size_m")
+            _check(all(v > 0 for v in size),
+                   "box collision dimensions must be positive")
+            quat = shape.get("rotation_xyzw")
+            _check(isinstance(quat, list) and len(quat) == 4 and
+                   all(type(x) in (int, float) and math.isfinite(x)
+                       for x in quat), "box rotation_xyzw must be a finite quaternion")
+            _check(abs(sum(x*x for x in quat) - 1.0) <= 1e-4,
+                   "box rotation_xyzw must be a unit quaternion")
     for contact in data.get("contact_surfaces", []):
         _check(isinstance(contact, dict), "invalid contact surface")
         _vector(contact.get("point_m"), "contact point")

@@ -1,0 +1,70 @@
+name: AG2 articulated adjustable bench Blender QA
+
+on:
+  pull_request:
+    paths:
+      - 'src/blender/generate_adjustable_bench.py'
+      - 'tests/asset/qa_adjustable_bench.py'
+      - 'src/motion_pipeline/ems/catalog.py'
+      - 'tests/unit/test_catalog.py'
+      - '.github/workflows/bench-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  real-articulated-bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Validate Python scripts and actual Blender runtime
+        run: |
+          python -m py_compile src/blender/generate_adjustable_bench.py tests/asset/qa_adjustable_bench.py
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends blender python3-numpy python3-pil
+          blender --version | head -n 2
+          blender -b --factory-startup --python-exit-code 10 --python-expr 'import numpy; print(numpy.__version__)'
+      - name: Generate three distinct articulated bench variants
+        run: |
+          set -euo pipefail
+          for angle in 0 45 75; do
+            blender -b --factory-startup --python-exit-code 10 \
+              --python src/blender/generate_adjustable_bench.py -- \
+              --output-dir "data/generated_assets/bench-${angle}deg" \
+              --back-angle-deg "$angle"
+          done
+      - name: Reimport GLB and independently verify moving pads and telescope endpoints
+        run: |
+          set -euo pipefail
+          for angle in 0 45 75; do
+            blender -b --factory-startup --python-exit-code 10 \
+              --python tests/asset/qa_adjustable_bench.py -- \
+              --asset-dir "data/generated_assets/bench-${angle}deg"
+          done
+      - name: Check actual artifacts via production catalog and rights gate
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          set -euo pipefail
+          for angle in 0 45 75; do
+            asset="data/generated_assets/bench-${angle}deg"
+            python -m ems asset-check --asset-dir "$asset"
+            if python -m ems asset-check --asset-dir "$asset" --require-commercial; then
+              echo "ERROR: unreviewed bench passed commercial release gate" >&2
+              exit 1
+            fi
+          done
+          python -m unittest tests/unit/test_catalog.py -v
+      - name: Keep genuine source, GLB, preview and QA for visual review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adjustable-bench-0-45-75deg-technical-unapproved
+          if-no-files-found: warn
+          path: |
+            data/generated_assets/bench-0deg/
+            data/generated_assets/bench-45deg/
+            data/generated_assets/bench-75deg/
+          retention-days: 7
