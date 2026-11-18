@@ -53,9 +53,9 @@ LICENSE_BLOB_SHA1 = "9bcfb3ece5301a55d3a41bbd00a029ab27d61d13"
 
 
 def git_blob_sha1(data: bytes) -> str:
-    """Git hash-object: SHA1('blob <size>\\0' + bytes), NOT raw-file SHA1."""
+    """Git hash-object: SHA1('blob <size>\0' + bytes), NOT raw-file SHA1."""
     return hashlib.sha1(
-        b"blob " + str(len(data)).encode() + b"\\0" + data
+        b"blob " + str(len(data)).encode() + b"\0" + data
     ).hexdigest()
 
 
