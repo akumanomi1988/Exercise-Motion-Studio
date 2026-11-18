@@ -99,3 +99,31 @@ Next: restore faithful >15° knee segments with interval-aware visibility,
 pose confidence and physically plausible pole-vector IK; calibrate root/ground
 with multi-view or floor observations; perform three-angle human visual review
 with 10 truly authorized exercises before any commercial approval.
+
+## G1.8 (2026-11-18) — world XYZ toe stabilization and actual three-view QA
+
+Original authorized Commons single-leg squat remains the only test; pose is
+monocular and hip-relative. We do **not** infer real world/root motion. An
+inferred right stance toe is selected from visible toe-height observations
+with at least 8 unambiguous samples and >=70% majority. 37/47 timeline
+samples pass the hypothetical stance check; the source model cannot prove
+floor contact or provide a calibrated ground plane.
+
+The retarget applies full XYZ root offsets in world metres so the selected
+skinned Rocketbox toe joint (actual `Bip01 R Toe0.head`) follows one
+stationary world-space coordinate; missing or alternate stance frames fall
+back to vertical estimate and hold XY. The new Blender/GLB tests independently
+check world X/Y drift within 3cm on these samples. Acknowledging this as a
+**geometric constraint** is essential: it does not solve bilateral foot IK,
+foot roll, realistic momentum, collider penetrations, contact switching or
+global camera/depth ambiguity.
+
+- [Genuine dual-human run 44361977459](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44361977459) PASS technical: 37 inferred toe-locked frames per sex; GLB X/Y max drift 7.1/4.56 micrometres, male/female. Root XY envelope ≈0.41×0.48m, four >1.5m/s root-speed screen failures per variant; max 3.02/3.04m/s. These are **quality alerts**, not speed measurements from calibrated real-world video.
+- [Run 44363274678](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44363274678) PASS technical with 28-item immutable review queue: includes 8 root-velocity alerts and 2 unverified monocular ground-support warnings; `release_gate=BLOCKED`.
+- [Run 44364717095](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44364717095) PASS technical, artifact 14454998833: frontend, side and three-quarter Blender PNG renders from the SAME real skinned motion, 8 authentic pose frames/WebP per sex, source+GLB hash evidence. Actual screenshots were inspected; **VISUAL APPROVAL STILL FAIL/PENDING**, balance and actual ground contact remain unverified, knee flexion differs up to ~23.6° in three observations per sex.
+- Root XYZ support metadata is a **stance hypothesis** and never claims external ground truth. No downloadable proprietary exercise media or G1/G4 PASS.
+
+Next iteration priorities are accurate knee/elbow pole-plane motion, root velocity
+continuity without suppressing source outliers, actual grounded foot phase/IK,
+commercially approved exercise clips and T01–T10 matrix. CC BY-SA-derived
+diagnostics must not enter the exclusive Kinetic media library.
