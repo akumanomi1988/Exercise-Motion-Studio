@@ -169,10 +169,14 @@ def _set_global_direction(posebone, desired: Vector):
     bpy.context.view_layer.update()
     actual = direction(posebone.head, posebone.tail)
     error = math.degrees(actual.angle(desired))
-    twist_error = math.degrees(
-        posebone.matrix.to_quaternion().rotation_difference(
-            target_orientation).angle
+    # q and -q encode the SAME rotation. mathutils Quaternion.angle may
+    # report 360 degrees for the identical orientation represented with the
+    # opposite sign, so compare the shortest SO(3) rotation modulo 2*pi.
+    residual = posebone.matrix.to_quaternion().rotation_difference(
+        target_orientation
     )
+    angle = residual.angle
+    twist_error = math.degrees(min(angle, 2.0 * math.pi - angle))
     require(math.isfinite(error) and error < .5,
             f"bone {posebone.name}: armature direction did not settle: {error:.3f} deg")
     require(math.isfinite(twist_error) and twist_error < .5,
