@@ -107,6 +107,11 @@ def inspect(source: Path, out: Path):
     report = json.loads((out / "import_report.json").read_text())
     require(src["license_spdx"] == report["license"] == "MIT",
             "third party source licence changed")
+    require((out / "UPSTREAM_LICENSE.md").is_file()
+            and digest(out / "UPSTREAM_LICENSE.md") ==
+                digest(source / "UPSTREAM_LICENSE.md") ==
+                report["license_notice_sha256"],
+            "Redistributed avatar must retain exact Microsoft MIT copyright notice")
     require(not report["commercial_asset_approval"]
             and report["human_visual_approval"] == "PENDING",
             "no automated commercial approval permitted")
