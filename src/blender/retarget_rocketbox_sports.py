@@ -258,6 +258,70 @@ def _studio(mesh, rig):
     scene.world.color = (.085, .09, .10)
 
 
+def _fit_review_camera_to_actual_motion(mesh, rig, frames):
+    """Fit the camera to the ACTUALLY evaluated skinned model across time.
+
+    A fixed rest-pose camera can crop the shins after a genuine video squat.
+    This function observes evaluated skinned mesh verts, not synthetic joint
+    positions or approximated bone tails; the saved .blend uses this camera.
+    """
+    scene = bpy.context.scene
+    cam = scene.camera
+    require(cam and cam.type == "CAMERA" and cam.data.type == "ORTHO",
+            "missing actual Blender diagnostic camera")
+    world_samples = []
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    for frame in frames:
+        scene.frame_set(frame)
+        bpy.context.view_layer.update()
+        obj = mesh.evaluated_get(depsgraph)
+        geo = obj.to_mesh()
+        try:
+            transform = mesh.matrix_world.copy()
+            step = max(1, len(geo.vertices)//1800)
+            world_samples.extend(
+                transform @ geo.vertices[k].co
+                for k in range(0,len(geo.vertices),step)
+            )
+        finally:
+            obj.to_mesh_clear()
+    require(len(world_samples) >= 300, "insufficient real skinned mesh samples")
+    low = Vector(tuple(min(v[i] for v in world_samples) for i in range(3)))
+    high = Vector(tuple(max(v[i] for v in world_samples) for i in range(3)))
+    center = (low + high) * .5
+    height = high.z - low.z
+    require(.5 < height < 3.6, f"unreasonable real avatar motion envelope: {height:.3f}m")
+    # Frontal/three-quarter as before; preserve view intent and re-center on
+    # all eight actually rendered poses, rather than the imported bind rest.
+    cam.location = center + Vector((2.1, -4.5, .3))
+    cam.rotation_euler = (center - cam.location).to_track_quat("-Z", "Y").to_euler()
+    bpy.context.view_layer.update()
+    invert_camera = cam.matrix_world.inverted()
+    projected = [invert_camera @ v for v in world_samples]
+    min_x,max_x = min(v.x for v in projected),max(v.x for v in projected)
+    min_y,max_y = min(v.y for v in projected),max(v.y for v in projected)
+    # Orthographic scale equals visible vertical span; width is scaled by
+    # horizontal/vertical image aspect (512/768), not by pixel dimensions.
+    aspect = (scene.render.resolution_x * scene.render.pixel_aspect_x /
+              (scene.render.resolution_y * scene.render.pixel_aspect_y))
+    require(.3 < aspect < 1., "unexpected camera aspect")
+    cam.data.ortho_scale = 1.18 * max(
+        max_y-min_y, (max_x-min_x)/aspect, 1.1
+    )
+    scene.frame_set(frames[0])
+    result = {
+        "projected_motion_width_m": round(max_x-min_x, 6),
+        "projected_motion_height_m": round(max_y-min_y, 6),
+        "actual_motion_world_height_m": round(float(height), 6),
+        "orthographic_vertical_span_m": round(float(cam.data.ortho_scale), 6),
+        "sample_count": len(world_samples),
+        "frames": frames,
+        "method": "EVALUATED_SKINNED_MESH_MOTION_ENVELOPE",
+    }
+    print("EMS_REAL_SKIN_MOTION_FRAMING=" + json.dumps(result))
+    return result
+
+
 def _sample_skin_vertices(mesh):
     """Sample evaluated *mesh* vertices, not armature transforms alone."""
     dep = bpy.context.evaluated_depsgraph_get()
@@ -568,6 +632,13 @@ def generate(source: Path, avatar: Path, output: Path,
     neutral_rest_deviation_m = max(
         math.dist(a, b) for a, b in zip(rest_vertices, reference_vertices)
     )
+    # Actual mesh sequence dictates framing. Include the exact same eight
+    # frames that we use for visual inspection and WebP export.
+    preview_frames = sorted({
+        1 + round(i * (last_frame_number - 1) / 7)
+        for i in range(8)
+    })
+    framing = _fit_review_camera_to_actual_motion(mesh, rig, preview_frames)
     scene.frame_set(1)
     editable = output / "retarget_review.blend"
     bpy.ops.wm.save_as_mainfile(filepath=str(editable))
@@ -588,10 +659,7 @@ def generate(source: Path, avatar: Path, output: Path,
     bpy.ops.object.select_all(action="DESELECT")
     frame_folder = output / "frames"
     frame_folder.mkdir(parents=True, exist_ok=True)
-    samples = sorted({
-        1 + round(i * (last_frame_number - 1) / 7)
-        for i in range(8)
-    })
+    samples = preview_frames
     for index, fno in enumerate(samples):
         scene.frame_set(fno)
         scene.render.filepath = str(frame_folder / f"frame_{index:03d}.png")
@@ -620,6 +688,7 @@ def generate(source: Path, avatar: Path, output: Path,
         "reference_selection": "MOST_UPRIGHT_OBSERVED_CAMERA_ALIGNMENT_ONLY",
         "reference_pose_bind_mesh_deviation_m": round(neutral_rest_deviation_m, 6),
         "rest_mesh_preview": "imported_glb_rest.png",
+        "actual_motion_camera_framing": framing,
         "low_visibility_bone_holds": low_visibility_holds,
         "temporal_swing_clamps": temporal_swing_clamps,
         "swing_angular_speed_limit_deg_per_s": maximum_allowed_speed_deg_s,
