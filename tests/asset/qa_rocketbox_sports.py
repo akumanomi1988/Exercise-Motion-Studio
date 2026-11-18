@@ -74,7 +74,7 @@ def assert_embedded_gltf_textures(path: Path, variant: str):
                 and start + length <= binary_start + bin_len,
                 "PNG texture bufferView outside binary glTF")
         payload = data[start:start+length]
-        require(payload[:8] == b"\\x89PNG\\r\\n\\x1a\\n"
+        require(payload[:8] == b"\x89PNG\r\n\x1a\n"
                 and payload[12:16] == b"IHDR",
                 "actual glTF image buffer not PNG")
         width, height = struct.unpack_from(">II", payload, 16)
