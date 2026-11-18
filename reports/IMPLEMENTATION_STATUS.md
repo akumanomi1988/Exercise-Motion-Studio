@@ -76,3 +76,9 @@ Hitos y trabajo futuro: [Issues del repositorio](https://github.com/akumanomi198
 - [CI 44253263080](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44253263080) **SUCCESS técnico**: vídeo humano real Wikimedia (46/47 frames detectados), 2 GLB skinned de 53 huesos/16 mapeados, WebP animados y QA de soporte vertical. Error vertical GLB máximo 0,015859 m para los dos avatares (límite técnico 0,03 m).
 - **FALLO biomecánico independiente:** 63 observaciones de articulación sobre 15°; error máximo de flexión 85,0958° y media 20,4285°. `kinematic_fidelity.status=FAIL_REVIEW_REQUIRED` en ambos avatares. Este CI verde NO certifica corrección de movimientos.
 - G1 = **IN_PROGRESS / QA_FAILED**, AG1 = **IN_PROGRESS**, G2–G6 sin aprobación; licencias de outputs derivados CC BY-SA en revisión. Sin autorización comercial, sin `motion.json` final, sin T01–T03 completos, sin inspección visual de nuevos renders. **NO FUSIONAR PR #16** hasta superar control biomecánico y visual.
+
+### G1.4 — inspección visual explícita de los previews (2026-11-18)
+
+- La hoja de contacto se construyó extrayendo los 8 fotogramas reales de los WebP masculino y femenino del artifact **14404254672**, run **44253263080**. Se abrió también `retarget_male/imported_glb_rest.png` para separar defecto de bind-rest.
+- **VISUAL FAIL**: torsión severa de tronco/hombros, piernas retorcidas y posiciones imposibles en varios fotogramas de ambos avatares. El GLB en reposo presenta anatomía normal; el defecto aparece con la animación. No es un problema exclusivamente de integridad del contenedor ni de geometría inicial.
+- QA humana de producción continúa **PENDING**, y esta inspección técnica **rechaza expresamente** los renders actuales; mantener G1/AG1 **NO APROBADOS** y prohibida la publicación comercial.
