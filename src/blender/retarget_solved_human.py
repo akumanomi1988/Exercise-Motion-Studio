@@ -151,24 +151,34 @@ def _find_real_skin():
 
 
 def _set_global_direction(posebone, desired: Vector):
-    """Rotate a live pose bone in armature space, respecting parent pose.
+    """Aim from bind orientation, not from the parent-twisted live orientation.
 
-    For a posebone, .head/.tail and .matrix are armature-local coordinates.
-    Assigning posebone.matrix derives its local basis with parent constraints.
+    Rotating the CURRENT pose matrix only aligns a bone's long axis and silently
+    preserves axial twist inherited from its parents. It can produce severe skin
+    torsion while bone direction tests still pass. Use the shortest bind-rest
+    swing and preserve the evaluated head to keep parent-child attachment.
+    Missing twist, root motion and contact remain explicitly unresolved.
     """
-    current = direction(posebone.head, posebone.tail)
-    delta = current.rotation_difference(desired)
+    bind = posebone.bone
+    rest_dir = direction(bind.head_local, bind.tail_local)
+    swing = rest_dir.rotation_difference(desired)
+    target_orientation = swing @ bind.matrix_local.to_quaternion()
     origin = posebone.head.copy()
-    rotation_around_head = (Matrix.Translation(origin)
-                            @ delta.to_matrix().to_4x4()
-                            @ Matrix.Translation(-origin))
-    posebone.matrix = rotation_around_head @ posebone.matrix.copy()
+    posebone.matrix = (Matrix.Translation(origin)
+                       @ target_orientation.to_matrix().to_4x4())
     bpy.context.view_layer.update()
     actual = direction(posebone.head, posebone.tail)
     error = math.degrees(actual.angle(desired))
+    twist_error = math.degrees(
+        posebone.matrix.to_quaternion().rotation_difference(
+            target_orientation).angle
+    )
     require(math.isfinite(error) and error < .5,
             f"bone {posebone.name}: armature direction did not settle: {error:.3f} deg")
-    return error
+    require(math.isfinite(twist_error) and twist_error < .5,
+            f"bone {posebone.name}: unobserved axial orientation drift: "
+            f"{twist_error:.3f} deg")
+    return error, twist_error
 
 
 def _studio(mesh, rig):
@@ -334,6 +344,7 @@ def generate(source: Path, avatar: Path, output: Path,
     last_observed = None
     held_missing: list[int] = []
     peak_angular_error = 0.0
+    peak_twist_error = 0.0
     scene = bpy.context.scene
     scene.render.fps = fps
     mapped = [(rig.pose.bones[name], p, c) for name, p, c in BONE_TARGETS]
@@ -387,8 +398,9 @@ def generate(source: Path, avatar: Path, output: Path,
                         expected, maximum_allowed_step_deg / step_deg
                     )
                 last_safe_dirs[name] = expected
-            err = _set_global_direction(posebone, expected)
+            err, twist_err = _set_global_direction(posebone, expected)
             peak_angular_error = max(peak_angular_error, err)
+            peak_twist_error = max(peak_twist_error, twist_err)
         # The lower VISIBLE toe approximates a support anchor; when both toes
         # are occluded or the frame is absent, HOLD the previous estimate.
         # This does not solve horizontal foot locks or prove actual contact.
@@ -513,6 +525,7 @@ def generate(source: Path, avatar: Path, output: Path,
         "timeline_end_frame": last_frame_number,
         "missing_or_ambiguous_timestamps_ms": held_missing,
         "maximum_bone_alignment_error_degrees": round(peak_angular_error, 5),
+        "maximum_unobserved_twist_error_degrees": round(peak_twist_error, 5),
         "outputs": {
             "editable": "retarget_review.blend",
             "glb": "retarget_review.glb",
@@ -549,6 +562,7 @@ def generate(source: Path, avatar: Path, output: Path,
         "captured_frames": len(captured),
         "mapped_bones": len(BONE_TARGETS),
         "maximum_bone_alignment_error_degrees": round(peak_angular_error, 5),
+        "maximum_unobserved_twist_error_degrees": round(peak_twist_error, 5),
         "reference_pose_bind_mesh_deviation_m": round(neutral_rest_deviation_m, 6),
         "missing_frames_held_for_review": len(held_missing),
         "low_visibility_bone_holds": low_visibility_holds,
