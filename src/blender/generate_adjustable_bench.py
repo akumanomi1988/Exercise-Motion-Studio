@@ -212,6 +212,8 @@ def generate(out: Path):
         ],
         "kinematics": {
             "type": "articulated",
+            "timeline_fps": 15,
+            "timeline_duration_seconds": 2.0,
             "parts": [FRAME_NAME, "Fixed seat padded surface", BACKREST_NAME],
             "joints": [
                 {"id": "backrest_recline", "part": BACKREST_NAME,
