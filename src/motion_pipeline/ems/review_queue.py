@@ -162,9 +162,37 @@ def compile_real_video_review(male_dir: str | Path, female_dir: str | Path,
         _require(manifest.get("source_video_license") ==
                  manifests.get("male", manifest).get("source_video_license"),
                  "source license differs between variants")
-        _require(report.get("joint_attachment", {}).get("status") ==
-                 "TECHNICAL_PASS",
-                 "joint continuity measurements missing")
+        joint_check = report.get("joint_attachment", {})
+        if joint_check.get("status") == "SEGMENT_LENGTH_TECHNICAL_PASS":
+            # Rocketbox: imported FBX bone.tail is a fabricated Blender edit-
+            # bone endpoint. Use parent/child anatomical HEAD length in metres.
+            _require(joint_check.get("reference") ==
+                     "PARENT_HEAD_TO_ACTUAL_CHILD_HEAD_IN_WORLD_METRES",
+                     "Rocketbox anatomical segment source differs")
+            _require(_number(joint_check.get(
+                "max_segment_length_relative_deviation"),
+                "real segment drift") <= .01,
+                "Rocketbox limb changed length beyond 1%")
+            _require(_number(joint_check.get(
+                "max_nonroot_bone_translation_m"),
+                "nonroot bone translation") <= .001,
+                "Rocketbox limb relies on translated deform bones")
+            _require(manifest.get("rig_profile") ==
+                     "ems.humanoid.rocketbox.sports.v1"
+                     and manifest.get("rig_bones") == 80,
+                     "only pinned Rocketbox humanoid can use HEAD-based QA")
+            _require(manifest.get("avatar_source_license") == "MIT"
+                     and manifest.get("avatar_source_license_file") ==
+                     "UPSTREAM_LICENSE.md",
+                     "Rocketbox original MIT distribution provenance missing")
+            license_file = root / "UPSTREAM_LICENSE.md"
+            _require(license_file.is_file() and not license_file.is_symlink()
+                     and manifest.get("avatar_source_license_sha256") ==
+                     _hash(license_file),
+                     "original Microsoft MIT notice hash mismatch")
+        else:
+            _require(joint_check.get("status") == "TECHNICAL_PASS",
+                     "joint continuity measurements missing")
         evidence[variant] = {
             "qa_sha256": _hash(qa_path),
             "manifest_sha256": _hash(manifest_path),
