@@ -47,6 +47,26 @@ def skin_sample(mesh, rig, frame):
 
 
 
+def frame_from_capture(source_frame, report):
+    """Map captured frame index to the current Blender scene timebase.
+
+    Blender .blend preserves authored 6fps; glTF import normally starts
+    with scene-default 24fps. GLB animation uses seconds; sampling the
+    original frame indices at 24fps falsely compares different instants.
+    """
+    original_fps = report["sample_fps"]
+    scene = bpy.context.scene
+    current_fps = scene.render.fps / scene.render.fps_base
+    require(type(source_frame) is int and source_frame >= 1,
+            "source frame index invalid")
+    require(type(original_fps) in (int, float) and
+            math.isfinite(original_fps) and original_fps > 0,
+            "invalid source timebase")
+    require(math.isfinite(current_fps) and current_fps > 0,
+            "invalid imported scene timebase")
+    return 1 + round((source_frame - 1) * current_fps / original_fps)
+
+
 def measured_joint_attachment(rig, last_frame):
     """Verify exported REAL GLB has no detached/deformed limb hinge.
 
@@ -137,8 +157,11 @@ def measured_kinematic_fidelity(rig, solved, report):
     for sample in frames:
         if sample.get("state") != "SOLVED_REVIEW_REQUIRED":
             continue
-        frame_no = 1 + round((sample["timestamp_ms"] - first_ms) * fps / 1000)
-        require(1 <= frame_no <= report["timeline_end_frame"],
+        source_frame = 1 + round(
+            (sample["timestamp_ms"] - first_ms) * fps / 1000
+        )
+        frame_no = frame_from_capture(source_frame, report)
+        require(1 <= source_frame <= report["timeline_end_frame"],
                 "solved timestamp does not match GLB animation timeline")
         bpy.context.scene.frame_set(frame_no)
         bpy.context.view_layer.update()
@@ -281,7 +304,9 @@ def inspect(folder: Path, solved: Path):
                 "invalid observed-foot declaration")
         if not feet:
             continue
-        bpy.context.scene.frame_set(anchor["frame"])
+        bpy.context.scene.frame_set(
+            frame_from_capture(anchor["frame"], report)
+        )
         bpy.context.view_layer.update()
         toe_z = min(
             (rig.matrix_world @ rig.pose.bones[name].tail).z
@@ -295,15 +320,17 @@ def inspect(folder: Path, solved: Path):
             "GLB changed ground-relative toe anchor beyond 3 cm: " +
             str(round(maximum_floor_error, 6)))
 
-    joint_attachment = measured_joint_attachment(
-        rig, report["timeline_end_frame"]
+    imported_scene_fps = (
+        bpy.context.scene.render.fps / bpy.context.scene.render.fps_base
     )
+    imported_end = frame_from_capture(report["timeline_end_frame"], report)
+    joint_attachment = measured_joint_attachment(rig, imported_end)
 
     # Evaluate REAL deformed vertices of the SKINNED MESH, not root translations
     # or static posebones alone. Any nonzero pose must alter surface geometry.
     first = skin_sample(body, rig, 1)
     max_mesh_displacement = 0.0
-    last = report["timeline_end_frame"]
+    last = imported_end
     for fno in sorted({1, max(2, last // 4),
                        max(2, last // 2), max(2, last * 3 // 4),
                        last}):
@@ -336,6 +363,9 @@ def inspect(folder: Path, solved: Path):
     # are created during the Blender retarget or introduced by GLB export.
     # Compare the same SHA-pinned human observations at identical timestamps
     # against independently reloaded editable .blend and imported GLB.
+    blend_scene_fps = (
+        bpy.context.scene.render.fps / bpy.context.scene.render.fps_base
+    )
     blend_fidelity = measured_kinematic_fidelity(edits[0], solved, report)
     require(blend_fidelity["observed_joint_frame_pairs"] ==
             kinematic_fidelity["observed_joint_frame_pairs"],
@@ -354,6 +384,10 @@ def inspect(folder: Path, solved: Path):
         "glb_skin_weights": glb_skin_weights,
         "real_mesh_deformation_span_m": round(max_mesh_displacement, 6),
         "joint_attachment": joint_attachment,
+        "source_motion_fps": report["sample_fps"],
+        "imported_glb_scene_fps": imported_scene_fps,
+        "editable_blend_scene_fps": blend_scene_fps,
+        "time_sampling_basis": "ANIMATION_SECONDS_RETIMED_PER_SCENE_FPS",
         "kinematic_fidelity": kinematic_fidelity,
         "editable_blend_kinematic_fidelity": blend_fidelity,
         "max_joint_flexion_export_drift_degrees": round(
