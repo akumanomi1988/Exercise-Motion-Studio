@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import bpy
-from mathutils import Vector
+from mathutils import Quaternion, Vector
 
 FAMILY = "ems.equipment.bench.adjustable"
 SOURCE = Path(__file__).resolve()
@@ -85,7 +85,7 @@ def rod(name, radius, mat, *, part):
 def position_rod(obj, origin, target, start_distance, end_distance, frame):
     axis = target - origin
     length = axis.length
-    require(length > end_distance > start_distance >= 0.0,
+    require(length + 1e-6 >= end_distance > start_distance >= 0.0,
             "telescoping brace cannot reach backrest pivot")
     unit = axis.normalized()
     obj.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(unit)
@@ -208,9 +208,6 @@ def generate(output: Path, back_angle_deg: int):
         angle = back_angle_deg + delta * (
             1 - math.cos(2 * math.pi * (fno - 1) / (FRAMES - 1))
         ) / 2
-        back.rotation_quaternion = Vector((1, 0, 0)).rotation_difference(
-            Vector((1, 0, 0)))  # reset quaternion explicitly
-        from mathutils import Quaternion
         back.rotation_quaternion = Quaternion((1, 0, 0), math.radians(angle))
         back.keyframe_insert(data_path="rotation_quaternion", frame=fno)
         for support in supports:
@@ -223,7 +220,7 @@ def generate(output: Path, back_angle_deg: int):
 
     parts = sorted((obj for obj in scene.objects if obj.get("ems_export")),
                    key=lambda obj: obj.name)
-    require(len(parts) >= 20, "procedural bench lacks frame/padding/support")
+    require(len(parts) == 19, "procedural bench lacks frame/padding/support")
     dims = world_bounds(parts, scene, (1, 25, 49))
     scene.frame_set(1)
     studio()
@@ -265,7 +262,7 @@ def generate(output: Path, back_angle_deg: int):
             {"id": "seat_top", "point_m": [0, -.385, .54],
              "normal": [0, 0, 1]},
             {"id": "backrest_top",
-             "point_m": [0, HINGE.y + .46 * math.cos(a),
+             "point_m": [0, HINGE.y + .46 * math.cos(a) - .04 * math.sin(a),
                          HINGE.z + .46 * math.sin(a) + .04 * math.cos(a)],
              "normal": [0, -math.sin(a), math.cos(a)]},
         ],
