@@ -1,0 +1,57 @@
+name: Real Blender adjustable bench articulation and GLB QA
+
+on:
+  pull_request:
+    paths:
+      - 'src/blender/generate_adjustable_bench.py'
+      - 'tests/asset/qa_adjustable_bench.py'
+      - '.github/workflows/bench-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/blender/generate_adjustable_bench.py'
+      - 'tests/asset/qa_adjustable_bench.py'
+      - '.github/workflows/bench-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: bench-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  articulated-bench:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install genuine Blender glTF/PNG dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends blender python3-numpy python3-pil
+          blender --version | head -n 2
+      - name: Generate original movable bench with keyed revolute backrest
+        run: |
+          blender -b --factory-startup --python-exit-code 10 \
+            --python src/blender/generate_adjustable_bench.py \
+            -- --output-dir data/generated_assets/adjustable-bench
+      - name: Assert real GLB imported articulation, retained fixed frame, pixels and blend
+        run: |
+          blender -b --factory-startup --python-exit-code 10 \
+            --python tests/asset/qa_adjustable_bench.py \
+            -- --asset-dir data/generated_assets/adjustable-bench
+      - name: Validate generated manifest and fail closed on commercial rights
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          python -m ems asset-check --asset-dir data/generated_assets/adjustable-bench
+          if python -m ems asset-check --asset-dir data/generated_assets/adjustable-bench --require-commercial; then
+            echo "Unreviewed bench unexpectedly passed commercial distribution gate" >&2
+            exit 1
+          fi
+      - name: Archive real Blender source, GLB and render for visual review
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: procedural-adjustable-bench-articulated-REVIEW-REQUIRED
+          path: data/generated_assets/adjustable-bench/
+          retention-days: 7
