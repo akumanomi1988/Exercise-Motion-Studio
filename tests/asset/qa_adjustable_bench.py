@@ -85,12 +85,23 @@ def validate(folder: Path):
     fixed = find(FRAME, "MESH")
     require(back.parent == hinge, "GLB hinge-to-backrest hierarchy lost")
 
-    start_back = position(back, 1)
-    end_back = position(back, 31)
-    start_fixed = position(fixed, 1)
-    end_fixed = position(fixed, 31)
-    start_seat = position(seat, 1)
-    end_seat = position(seat, 31)
+    # glTF stores animation timestamps in *seconds*. A fresh Blender importer
+    # can use 24fps even though the source scene authored at 15fps. Sampling
+    # imported frame 31 would evaluate only 1.25 seconds of a 2-second clip.
+    # Verify identical physical instants, not identical frame indices.
+    source_fps = meta["kinematics"]["timeline_fps"]
+    source_duration = meta["kinematics"]["timeline_duration_seconds"]
+    require(source_fps == 15 and source_duration == 2.0,
+            "unexpected authored articulation timebase")
+    imported_fps = bpy.context.scene.render.fps / bpy.context.scene.render.fps_base
+    start_frame = 1
+    end_frame = 1 + round(source_duration * imported_fps)
+    start_back = position(back, start_frame)
+    end_back = position(back, end_frame)
+    start_fixed = position(fixed, start_frame)
+    end_fixed = position(fixed, end_frame)
+    start_seat = position(seat, start_frame)
+    end_seat = position(seat, end_frame)
     change = end_back - start_back
     # Geometric expected center displacement for radius 0.365m, 60 degrees:
     # dz = 0.365*sin(60) = 0.3161m; dx = 0.365*(cos(60)-1) = -0.1825m.
@@ -104,10 +115,10 @@ def validate(folder: Path):
             "fixed frame must never move with backrest")
     require((end_seat - start_seat).length < .001,
             "fixed seat must not move with backrest")
-    bpy.context.scene.frame_set(1)
+    bpy.context.scene.frame_set(start_frame)
     bpy.context.view_layer.update()
     rot_start = hinge.matrix_world.to_quaternion().copy()
-    bpy.context.scene.frame_set(31)
+    bpy.context.scene.frame_set(end_frame)
     bpy.context.view_layer.update()
     rot_end = hinge.matrix_world.to_quaternion().copy()
     angle = math.degrees(rot_start.rotation_difference(rot_end).angle)
@@ -140,6 +151,8 @@ def validate(folder: Path):
         "glb_backrest_vertical_travel_m": round(change.z, 6),
         "glb_backrest_horizontal_travel_m": round(change.x, 6),
         "glb_hinge_rotation_degrees": round(angle, 4),
+        "imported_fps": imported_fps,
+        "imported_end_frame_at_2_seconds": end_frame,
         "static_frame_invariant": "PASS",
         "static_seat_invariant": "PASS",
         "preview_resolution": [720, 540],
