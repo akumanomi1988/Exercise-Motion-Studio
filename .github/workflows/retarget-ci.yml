@@ -1,0 +1,136 @@
+name: Real human video to dual skinned GLB review (noncommercial)
+
+on:
+  pull_request:
+    paths:
+      - 'src/blender/retarget_solved_human.py'
+      - 'tests/asset/qa_human_retarget.py'
+      - 'scripts/encode-avatar-preview.py'
+      - '.github/workflows/retarget-ci.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  real-human-dual-avatar-retarget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install real media CPU inference and Blender
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg libgles2 libegl1 libgl1 blender python3-numpy python3-pil
+          python -m pip install -r requirements-pose.txt Pillow==12.0.0
+          blender --version | head -n 2
+      - name: Fetch and verify actually authorized human video + pinned model SHA
+        run: |
+          set -euo pipefail
+          mkdir -p data/qa-inference/models
+          curl --fail --location --retry 3 --max-time 90 \
+            "https://upload.wikimedia.org/wikipedia/commons/1/16/Basic_single_leg_squat.webm" \
+            -o data/qa-inference/real_single_leg_squat.webm
+          curl --fail --location --retry 3 --max-time 120 \
+            "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task" \
+            -o data/qa-inference/models/pose_landmarker_full.task
+          echo "ab4602823ad00de3409eb50d2c65c6b1ce5566c5dca6753555ff2b19107db88e  data/qa-inference/real_single_leg_squat.webm" | sha256sum -c
+          echo "5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1  data/qa-inference/models/pose_landmarker_full.task" | sha256sum -c
+          git check-ignore -q data/qa-inference/real_single_leg_squat.webm
+          git check-ignore -q data/qa-inference/models/pose_landmarker_full.task
+      - name: Run actual human MediaPipe inference and constrained skeleton solver
+        env:
+          PYTHONPATH: src/motion_pipeline
+        run: |
+          python tests/integration/smoke_real_pose.py \
+            --video data/qa-inference/real_single_leg_squat.webm \
+            --model data/qa-inference/models/pose_landmarker_full.task \
+            --model-sha256 5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1 \
+            --qa-output data/qa-inference
+      - name: Pin, verify, install MPFB extension (authoring only)
+        run: |
+          set -euo pipefail
+          MPFB_SHA=9de0707fdc88438d7c53a1a2ac7937d9221e2431
+          mkdir -p data/tools
+          curl --fail --location --retry 3 --max-time 120 \
+            "https://codeload.github.com/makehumancommunity/mpfb2/tar.gz/$MPFB_SHA" \
+            -o data/tools/mpfb-source.tar.gz
+          tar -xzf data/tools/mpfb-source.tar.gz -C data/tools
+          test -f "data/tools/mpfb2-$MPFB_SHA/src/mpfb/data/3dobjs/base.obj"
+          test -f "data/tools/mpfb2-$MPFB_SHA/src/mpfb/data/rigs/standard/weights.game_engine.json"
+          grep -q 'CC0 1.0 Universal' "data/tools/mpfb2-$MPFB_SHA/LICENSE.md"
+          blender --command extension build \
+            --source-dir "data/tools/mpfb2-$MPFB_SHA/src/mpfb" \
+            --output-dir data/tools
+          EXT_ZIP="$(find data/tools -maxdepth 1 -type f -name 'mpfb*.zip' -print -quit)"
+          test -f "$EXT_ZIP"
+          blender --command extension install-file -r user_default -e "$EXT_ZIP"
+          blender -b --python-exit-code 10 --python-expr \
+            'import addon_utils,bpy; addon_utils.enable("bl_ext.user_default.mpfb"); assert "bl_ext.user_default.mpfb" in bpy.context.preferences.addons'
+      - name: Build real male and female CC0 skinned avatars
+        run: |
+          MPFB_SHA=9de0707fdc88438d7c53a1a2ac7937d9221e2431
+          for gender in male female; do
+            blender -b --python-exit-code 10 \
+              --python src/blender/build_mpfb_avatars.py -- \
+              --addon-parent "data/tools/mpfb2-$MPFB_SHA/src" \
+              --output-dir "data/generated_avatars/$gender" --variant "$gender"
+          done
+          # Dual QA consumes per-avatar qa_report.json produced by Blender QA.
+          for gender in male female; do
+            blender -b --factory-startup --python-exit-code 10 \
+              --python tests/asset/qa_mpfb_avatar.py -- \
+              --asset-dir "data/generated_avatars/$gender"
+          done
+          python tests/asset/qa_dual_avatar.py --root data/generated_avatars
+      - name: Retarget actual real human motion to BOTH genuine deformable rigs
+        run: |
+          for gender in male female; do
+            blender -b --factory-startup --python-exit-code 10 \
+              --python src/blender/retarget_solved_human.py -- \
+              --solved data/qa-inference/solved_skeleton.json \
+              --attribution data/qa-inference/SOURCE_ATTRIBUTION.txt \
+              --avatar-dir "data/generated_avatars/$gender" \
+              --output-dir "data/qa-inference/retarget_$gender" --fps 6
+          done
+      - name: Validate changing SKINNED geometry, GLB roundtrip and animated WebP
+        run: |
+          for gender in male female; do
+            root="data/qa-inference/retarget_$gender"
+            python scripts/encode-avatar-preview.py --output-dir "$root"
+            blender -b --factory-startup --python-exit-code 10 \
+              --python tests/asset/qa_human_retarget.py -- \
+              --output-dir "$root" \
+              --solved data/qa-inference/solved_skeleton.json
+          done
+      - name: Archive noncommercial QA evidence EVEN WHEN biomechanical tests fail
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-human-male-female-skin-retarget-REVIEW-REQUIRED
+          if-no-files-found: warn
+          path: |
+            data/qa-inference/SOURCE_ATTRIBUTION.txt
+            data/qa-inference/solved_skeleton.json
+            data/qa-inference/retarget_male/retarget_review.blend
+            data/qa-inference/retarget_male/retarget_review.glb
+            data/qa-inference/retarget_male/retarget_review.png
+            data/qa-inference/retarget_male/imported_glb_rest.png
+            data/qa-inference/retarget_male/retarget_review.webp
+            data/qa-inference/retarget_male/retarget_manifest.json
+            data/qa-inference/retarget_male/retarget_qa.json
+            data/qa-inference/retarget_male/SOURCE_ATTRIBUTION.txt
+            data/qa-inference/retarget_female/retarget_review.blend
+            data/qa-inference/retarget_female/retarget_review.glb
+            data/qa-inference/retarget_female/retarget_review.png
+            data/qa-inference/retarget_female/imported_glb_rest.png
+            data/qa-inference/retarget_female/retarget_review.webp
+            data/qa-inference/retarget_female/retarget_manifest.json
+            data/qa-inference/retarget_female/retarget_qa.json
+            data/qa-inference/retarget_female/SOURCE_ATTRIBUTION.txt
+          retention-days: 7
