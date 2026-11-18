@@ -91,3 +91,9 @@ Próxima ejecución: verificación Windows, revisión de licencias/pesos, contra
 5. [CI 44253263080](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44253263080) SUCCESS técnico, 2 avatares/GLB/WebP, pero nuevo control de fidelidad detecta 63 eventos con desviación angular >15°, hasta 85,0958°.
 6. Se añadió comparación diferencial entre el editable `.blend` y GLB exportado (`bee66d84`, pendiente de resultado en el momento de este registro) para distinguir fallo de retarget respecto a fallo de exportación. No usar `run success` como aprobación G1.
 7. No hubo publicación de assets comerciales ni modificaciones de Anvil Fitness/Supabase.
+
+### Verificación visual de la iteración G1.4 — 2026-11-18
+
+- Se descargó realmente el ZIP de CI #14404254672 y se verificó su contenido (GLB, .blend, 2 WebP de ocho fotogramas y PNG/manifest).
+- Se montaron 16 fotogramas de los WebP y se inspeccionaron junto con el render de reposo; fallan anatomía, amplitud articular y coherencia espacial. El resultado cuantitativo de 85° de error de rodilla tiene evidencia visual directa.
+- Diagnóstico diferencial: el reposo GLB corregido es coherente. Prioridad de reparación: sistema de transformación y jerarquía de retarget, luego IK y apoyos; no ocultar defectos con smoothing ni aprobar export comercial.
