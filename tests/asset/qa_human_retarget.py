@@ -216,6 +216,50 @@ def measured_kinematic_fidelity(rig, solved, report):
 def hash_path(path):
     return sha(path)
 
+def measure_vertical_support(rig, anchors, report, floor_z):
+    """Measure support at exactly matching ANIMATION SECONDS in this scene.
+
+    Record rather than bypass failed values. Called on imported GLB and then
+    independently on the original editable .blend to isolate export drift.
+    """
+    largest = 0.0
+    worst_frame = None
+    checked = 0
+    for anchor in anchors:
+        require(type(anchor.get("frame")) is int and
+                type(anchor.get("valid")) is bool,
+                "invalid support metadata")
+        feet = anchor.get("observed_feet")
+        require(isinstance(feet, list) and
+                set(feet).issubset({"foot_l", "foot_r"}) and
+                bool(feet) == anchor["valid"],
+                "invalid observed foot declaration")
+        if not feet:
+            continue
+        scene_frame = frame_from_capture(anchor["frame"], report)
+        bpy.context.scene.frame_set(scene_frame)
+        bpy.context.view_layer.update()
+        toe_z = min(
+            (rig.matrix_world @ rig.pose.bones[name].tail).z
+            for name in feet
+        )
+        error = abs(toe_z - floor_z)
+        require(math.isfinite(error), "nonfinite foot-support error")
+        if error > largest:
+            largest = error
+            worst_frame = {"source_frame": anchor["frame"],
+                           "scene_frame": scene_frame,
+                           "feet": feet,
+                           "error_m": round(error, 7)}
+        checked += 1
+    require(checked >= 3,
+            "not enough visible foot anchors for review")
+    return {"max_error_m": round(largest, 7),
+            "worst": worst_frame, "observed_frames": checked,
+            "scene_fps": bpy.context.scene.render.fps /
+                         bpy.context.scene.render.fps_base}
+
+
 def inspect(folder: Path, solved: Path):
     report = json.loads((folder / "retarget_manifest.json").read_text(
         encoding="utf-8"
@@ -291,34 +335,9 @@ def inspect(folder: Path, solved: Path):
     require(report.get("full_body_ik") == "NOT_IMPLEMENTED" and
             report["commercial_approval"] is False,
             "toe anchoring cannot establish complete contact or IK")
-    maximum_floor_error = 0.0
-    validated_support_frames = 0
-    for anchor in anchors:
-        require(type(anchor.get("frame")) is int and
-                type(anchor.get("valid")) is bool,
-                "invalid support metadata")
-        feet = anchor.get("observed_feet")
-        require(isinstance(feet, list) and
-                set(feet).issubset({"foot_l", "foot_r"}) and
-                bool(feet) == anchor["valid"],
-                "invalid observed-foot declaration")
-        if not feet:
-            continue
-        bpy.context.scene.frame_set(
-            frame_from_capture(anchor["frame"], report)
-        )
-        bpy.context.view_layer.update()
-        toe_z = min(
-            (rig.matrix_world @ rig.pose.bones[name].tail).z
-            for name in feet
-        )
-        maximum_floor_error = max(maximum_floor_error, abs(toe_z - floor_z))
-        validated_support_frames += 1
-    require(validated_support_frames >= 3,
-            "not enough observed foot anchors for roundtrip QA")
-    require(maximum_floor_error <= .03,
-            "GLB changed ground-relative toe anchor beyond 3 cm: " +
-            str(round(maximum_floor_error, 6)))
+    glb_support = measure_vertical_support(rig, anchors, report, floor_z)
+    maximum_floor_error = glb_support["max_error_m"]
+    validated_support_frames = glb_support["observed_frames"]
 
     imported_scene_fps = (
         bpy.context.scene.render.fps / bpy.context.scene.render.fps_base
@@ -366,6 +385,9 @@ def inspect(folder: Path, solved: Path):
     blend_scene_fps = (
         bpy.context.scene.render.fps / bpy.context.scene.render.fps_base
     )
+    blend_support = measure_vertical_support(
+        edits[0], anchors, report, floor_z
+    )
     blend_fidelity = measured_kinematic_fidelity(edits[0], solved, report)
     require(blend_fidelity["observed_joint_frame_pairs"] ==
             kinematic_fidelity["observed_joint_frame_pairs"],
@@ -397,7 +419,13 @@ def inspect(folder: Path, solved: Path):
             "TECHNICAL_PASS" if flexion_export_drift <= 1.0
             else "FAIL_REVIEW_REQUIRED"
         ),
-        "vertical_foot_anchor_roundtrip": "TECHNICAL_PASS",
+        "vertical_foot_anchor_roundtrip": (
+            "TECHNICAL_PASS" if maximum_floor_error <= .03
+            and blend_support["max_error_m"] <= .03
+            else "FAIL_REVIEW_REQUIRED"
+        ),
+        "glb_vertical_support": glb_support,
+        "blend_vertical_support": blend_support,
         "vertical_support_observed_frames": validated_support_frames,
         "vertical_support_held_frames": report["support_frames_held"],
         "maximum_vertical_foot_anchor_error_m": round(maximum_floor_error, 7),
@@ -409,6 +437,12 @@ def inspect(folder: Path, solved: Path):
         json.dumps(result, indent=2) + "\n", encoding="utf-8"
     )
     print("EMS_REAL_SKINNED_GLB_QA=" + json.dumps(result))
+    # Preserve both source and exported support evidence before failing closed.
+    require(maximum_floor_error <= .03 and
+            blend_support["max_error_m"] <= .03,
+            "vertical toe support exceeds 3cm; compare .blend vs GLB "
+            "in retarget_qa.json: " +
+            str((glb_support, blend_support)))
     # Report and archive the failing differential before rejecting the run;
     # never convert a failed GLB into PASS merely to preserve evidence.
     require(flexion_export_drift <= 1.0,
