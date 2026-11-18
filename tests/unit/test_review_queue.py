@@ -43,14 +43,22 @@ class ReviewQueueContractTests(unittest.TestCase):
         }
         self.save(self.solved, self.raw)
         for variant, folder in (("male", self.male), ("female", self.female)):
+            attribution = folder / "SOURCE_ATTRIBUTION.txt"
+            attribution.write_text(
+                "CC BY-SA 4.0\\n"
+                "https://creativecommons.org/licenses/by-sa/4.0/\\n",
+                encoding="utf-8",
+            )
             self.save(folder / "retarget_manifest.json", {
                 "data_type": "SKINNED_HUMAN_RETARGET_DIAGNOSTIC_NOT_FINAL_MOTION",
                 "variant": variant, "solved_skeleton_sha256": self.hash(self.solved),
                 "original_video_sha256": "a" * 64, "pose_model_sha256": "b" * 64,
                 "source_frames": 3, "sample_fps": 6,
                 "source_video_license": "CC-BY-SA-4.0",
+                "source_attribution_file": "SOURCE_ATTRIBUTION.txt",
                 "commercial_approval": False, "human_visual_review": "PENDING",
-                "file_sha256": {"retarget_review.glb": "c" * 64},
+                "file_sha256": {"retarget_review.glb": "c" * 64,
+                                "SOURCE_ATTRIBUTION.txt": self.hash(attribution)},
                 "full_body_ik": "NOT_IMPLEMENTED",
                 "foot_contacts": "NOT_SOLVED", "hand_grips": "NOT_SOLVED",
                 "rights_review": "PENDING",
