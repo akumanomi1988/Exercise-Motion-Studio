@@ -17,16 +17,16 @@ Las publicaciones de Kinetic no transfieren automáticamente permisos comerciale
 
 ## Snapshot oficial fijado y primera auditoría real — 18/11/2026
 
-- **Solo Kinetic** \`kinetic-place/exercises-db\`, commit normativo
-  \`75d59701c749243f522149d5edd63ec4c6870e5e\`.
-- \`es/exercises.json\` Git blob \`ae8835aadbcbb05a06d0a75d29c7b604045c09b4\`;
-  \`es/equipment.json\` Git blob \`5b117cae1a416f1b4badb6eba81ae45634cebef1\`.
+- **Solo Kinetic** `kinetic-place/exercises-db`, commit normativo
+  `75d59701c749243f522149d5edd63ec4c6870e5e`.
+- `es/exercises.json` Git blob `ae8835aadbcbb05a06d0a75d29c7b604045c09b4`;
+  `es/equipment.json` Git blob `5b117cae1a416f1b4badb6eba81ae45634cebef1`.
 - Licencia de estos datos: MIT, Copyright (c) 2026 Kinetic.place,
   conservar LICENSE; no extiende derechos sobre los vídeos o miniaturas
   de terceros citados dentro de los registros.
 - **Inventario verificado con archivos reales:** 908 ejercicios, 44 equipos,
   1086 asociaciones, 16 familias, once equipos sin ejercicio referenciador.
-  Todos los 908 y los 44 siguen \`NOT_APPROVED/UNMAPPED\`: son gaps,
+  Todos los 908 y los 44 siguen `NOT_APPROVED/UNMAPPED`: son gaps,
   no geometría. [CI 44364445904](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44364445904).
 
 ### Auditoría local reproducible (Windows PowerShell, sin Docker)
@@ -34,7 +34,7 @@ Las publicaciones de Kinetic no transfieren automáticamente permisos comerciale
 Descargar los JSON oficiales desde el commit fijado una vez, o copiarlos
 a estas rutas desde una distribución original verificada:
 
-\`\`\`powershell
+```powershell
 $revision = "75d59701c749243f522149d5edd63ec4c6870e5e"
 New-Item -ItemType Directory -Force data/kinetic-snapshot/es | Out-Null
 foreach ($source in @("exercises", "equipment")) {
@@ -43,7 +43,7 @@ foreach ($source in @("exercises", "equipment")) {
 }
 $env:PYTHONPATH = "src/motion_pipeline"
 python -m ems kinetic-audit --exercises data/kinetic-snapshot/es/exercises.json --equipment data/kinetic-snapshot/es/equipment.json --output data/kinetic-output/inventory.json
-\`\`\`
+```
 
 El comando valida el hash Git de los inputs completos, los 908/44 IDs,
 las asociaciones UUID y genera un índice exclusivamente de **metadatos**.
@@ -53,9 +53,9 @@ para un snapshot dado; IDs, slug y relaciones se mantienen en español.
 
 No descargar, conservar, incrustar ni publicar vídeos/miniaturas YouTube
 desde Kinetic; no importar RepDB. La detección de máquinas y agarres
-precisa **subtipos por ejercicio**, ya que las categorías \`Máquina\`
-(72 asociaciones) y \`Polea\` (84) no describen un mecanismo concreto.
-El backlog de activos debe reconciliarse contra el \`AssetCatalog\` real
+precisa **subtipos por ejercicio**, ya que las categorías `Máquina`
+(72 asociaciones) y `Polea` (84) no describen un mecanismo concreto.
+El backlog de activos debe reconciliarse contra el `AssetCatalog` real
 por UUID y perfil cinemático. No se asignan assets por nombre/familia de
 forma automática sin prueba de equivalencia. La ausencia de mapping o QA
 aprobado bloquea G6 incluso si existe un GLB diagnóstico.
