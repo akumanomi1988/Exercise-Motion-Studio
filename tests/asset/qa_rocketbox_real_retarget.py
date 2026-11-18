@@ -535,6 +535,35 @@ def inspect(folder: Path, solved: Path):
                                for v in sample_pixels[i:i + 3]))
     require(len(count_colors) > 10, "blank/noninformative diagnostic image")
 
+    views = report.get("real_motion_multiview_review")
+    require(isinstance(views, dict)
+            and set(views) == {"front", "side", "three_quarter"},
+            "three independent real-human camera reviews not rendered")
+    review_digests = []
+    for angle, data in views.items():
+        file = folder / ("review_" + angle + ".png")
+        require(data.get("file") == file.name
+                and data.get("actual_skeleton_source") ==
+                    "SAME_REAL_CAPTURED_CLIP",
+                "review source provenance not tied to actual motion")
+        require(data.get("sample_frame") in
+                report["actual_motion_camera_framing"]["frames"],
+                "multiview is not a sampled real source frame")
+        require(file.is_file() and file.stat().st_size > 10_000
+                and sha(file) == report["file_sha256"][file.name],
+                "missing/tampered real Blender 3-angle preview")
+        review_digests.append(sha(file))
+        frame_image = bpy.data.images.load(str(file), check_existing=False)
+        require(tuple(frame_image.size) == (512, 768),
+                "incorrect multiview review dimensions")
+        sample = frame_image.pixels
+        step = max(4, (len(sample) // 700 // 4) * 4)
+        colors = {tuple(round(float(x), 2) for x in sample[i:i+3])
+                  for i in range(0, len(sample)-3, step)}
+        require(len(colors) > 10, "blank rendered multiview " + angle)
+    require(len(set(review_digests)) == 3,
+            "three nominal views are not different camera projections")
+
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
     glb_origin_seconds = glb_first_animation_key_seconds(
@@ -657,6 +686,7 @@ def inspect(folder: Path, solved: Path):
     result = {
         "technical_skinned_retarget": "PASS",
         "full_body_camera_coverage": camera_coverage,
+        "real_motion_three_view_technical": "PASS_FRAMES_NOT_HUMAN_APPROVAL",
         "variant": report["variant"],
         "source_frames": report["source_frames"],
         "actual_detected_frames": report["detected_frames"],
