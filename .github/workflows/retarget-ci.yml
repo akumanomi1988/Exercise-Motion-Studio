@@ -105,7 +105,8 @@ jobs:
             python scripts/encode-avatar-preview.py --output-dir "$root"
             blender -b --factory-startup --python-exit-code 10 \
               --python tests/asset/qa_human_retarget.py -- \
-              --output-dir "$root"
+              --output-dir "$root" \
+              --solved data/qa-inference/solved_skeleton.json
           done
       - name: Archive ONLY noncommercial technical derivatives with CC BY-SA attribution
         if: success()
