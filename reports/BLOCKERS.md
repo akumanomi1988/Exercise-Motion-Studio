@@ -32,3 +32,5 @@ Continuar tareas independientes; no convertir un bloqueo en PASS.
 
 | B-21 | OPEN / KINEMATIC_FAIL | Retarget humano de la PR #16: test independiente contra el vídeo real mide 63 pares >15° y 85,0958° de error máximo en flexión de rodilla pese a CI E2E técnico verde | Aislar error en Blender editable frente a GLB, reparar jerarquía/rotaciones/oclusiones y repetir matriz con revisión frontal/lateral/3-4 |
 | B-22 | OPEN / SUPPORT_LIMITATION | Anclaje vertical de pies aprobado técnicamente (1,59 cm de discrepancia GLB), pero no representa contacto real 3D ni corrige deslizamiento horizontal ni penetración | Implementar soporte/IK de pies, contactos temporales y validación de deriva XY antes de G1 |
+
+| B-23 | OPEN / VISUAL_FAIL | 8 fotogramas por sexo del artifact 14404254672 revisados: hombros/torso y piernas presentan deformaciones severas, pese a avatar GLB válido en reposo y al anclaje Z técnico PASS | Corregir orientaciones locales/jerarquía del retarget con comparación GLB frente a .blend y repetir vistas frontal, lateral y 3/4 antes de integrar PR #16 |
