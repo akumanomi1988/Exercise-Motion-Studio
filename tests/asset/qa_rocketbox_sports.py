@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import math
+import struct
 import sys
 from pathlib import Path
 
@@ -32,6 +33,75 @@ def skinned_vertices(mesh):
         evaluated.to_mesh_clear()
 
 
+def assert_embedded_gltf_textures(path: Path, variant: str):
+    """Inspect the *binary* glTF buffers rather than Blender's image cache.
+
+    A valid 2K texture in an exported GLB can be lazy/unloaded in bpy.images
+    after import; image.has_data is not reliable as an embedded-data assertion.
+    Confirm exact PNG headers, dimensions, material PBR binding and no 1x1
+    fallback image. Confirm that rigged skin and all required maps are present.
+    """
+    data = path.read_bytes()
+    require(len(data) > 10000, "GLB binary unexpectedly small")
+    magic, version, declared = struct.unpack_from("<4sII", data, 0)
+    require(magic == b"glTF" and version == 2 and declared == len(data),
+            "invalid GLB binary header")
+    chunk_len, chunk_type = struct.unpack_from("<II", data, 12)
+    require(chunk_type == 0x4E4F534A, "GLB JSON chunk missing")
+    doc = json.loads(data[20:20+chunk_len])
+    buffer_start = 20 + chunk_len
+    bin_len, bin_type = struct.unpack_from("<II", data, buffer_start)
+    require(bin_type == 0x004E4942, "GLB embedded binary chunk missing")
+    binary_start = buffer_start + 8
+    require(binary_start + bin_len <= len(data), "GLB binary chunk out of bounds")
+    views = doc.get("bufferViews", [])
+    textures = doc.get("textures", [])
+    images = doc.get("images", [])
+    require(len(doc.get("skins", [])) == 1, "skin lost in binary GLB")
+    require(len(images) >= (5 if variant == "female" else 4),
+            "missing genuine body/head or cutout texture")
+    image_names = set()
+    for image in images:
+        image_names.add(image.get("name", ""))
+        require(image.get("mimeType") == "image/png"
+                and isinstance(image.get("bufferView"), int),
+                "external or unexpected unembedded glTF texture")
+        view = views[image["bufferView"]]
+        start = binary_start + view.get("byteOffset", 0)
+        length = view["byteLength"]
+        require(256 < length < bin_len
+                and start >= binary_start
+                and start + length <= binary_start + bin_len,
+                "PNG texture bufferView outside binary glTF")
+        payload = data[start:start+length]
+        require(payload[:8] == b"\\x89PNG\\r\\n\\x1a\\n"
+                and payload[12:16] == b"IHDR",
+                "actual glTF image buffer not PNG")
+        width, height = struct.unpack_from(">II", payload, 16)
+        require(width >= 1024 and height >= 1024,
+                "GLB contains degraded/minified source texture")
+    for kind in ("body_color", "body_normal", "head_color", "head_normal"):
+        require(any(kind in n for n in image_names),
+                "GLB missing pinned source " + kind)
+    if variant == "female":
+        require(any("opacity_color" in n for n in image_names),
+                "GLB lacks female alpha cutout source texture")
+    materials = doc.get("materials", [])
+    relevant = [m for m in materials
+                if any(part in m.get("name","").lower()
+                       for part in ("body", "head", "opacity"))]
+    require(len(relevant) >= (3 if variant == "female" else 2),
+            "GLB missing expected human surface materials")
+    for mat in relevant:
+        tex = mat.get("pbrMetallicRoughness", {}).get("baseColorTexture", {})
+        require(type(tex.get("index")) is int
+                and 0 <= tex["index"] < len(textures),
+                "genuine body/head/opacity PBR texture not bound")
+    return {"embedded_texture_count": len(images),
+            "material_count": len(relevant),
+            "source_texture_resolution": "AT_LEAST_1024x1024"}
+
+
 def inspect(source: Path, out: Path):
     src = json.loads((source / "source_provenance.json").read_text())
     report = json.loads((out / "import_report.json").read_text())
@@ -54,6 +124,9 @@ def inspect(source: Path, out: Path):
     require(len({tuple(round(float(v), 2) for v in values[i:i+3])
                  for i in range(0, len(values)-4, stride)}) >= 20,
             "avatar review image blank/uninformative")
+    gltf_textures = assert_embedded_gltf_textures(
+        out / "avatar.glb", report["variant"]
+    )
     bpy.ops.object.select_all(action="SELECT")
     bpy.ops.object.delete(use_global=False)
     bpy.ops.import_scene.gltf(filepath=str(out / "avatar.glb"))
@@ -67,8 +140,6 @@ def inspect(source: Path, out: Path):
     require(len(rig.data.bones) >= 25, "GLB lost humanoid skeleton bones")
     require(any(m.data.materials for m in mesh),
             "GLB has no attached source materials")
-    images = [i for i in bpy.data.images if i.has_data and i.size[0] >= 1000]
-    require(images, "GLB lost real source texture maps")
     body = max(mesh, key=lambda m: len(m.data.vertices))
     weights = sum(bool(v.groups) for v in body.data.vertices)
     require(weights > 1000, "GLB contains no usable skin weights")
@@ -95,7 +166,8 @@ def inspect(source: Path, out: Path):
         "skinned_body_weighted_vertices": weights,
         "actual_deforming_bone": chosen.name,
         "actual_mesh_deformation_under_20deg_arm_swing_m": round(deformation, 6),
-        "embedded_source_texture_count": len(images),
+        "embedded_source_texture_count": gltf_textures["embedded_texture_count"],
+        "binary_embedded_images_and_pbr": gltf_textures,
         "rest_png": "VISUAL_REVIEW_REQUIRED",
         "exercise_retarged_real_video": "NOT_TESTED",
         "contact_and_hand_ik": "NOT_TESTED",
