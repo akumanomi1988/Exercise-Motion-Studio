@@ -28,7 +28,7 @@ jobs:
           grep -q 'Copyright (c) 2020 Microsoft' data/vendor/rocketbox_sports/male/UPSTREAM_LICENSE.md
           grep -q 'Copyright (c) 2020 Microsoft' data/vendor/rocketbox_sports/female/UPSTREAM_LICENSE.md
           test -f data/vendor/rocketbox_sports/male/Export/Sports_Male_01.fbx
-          test -f data/vendor/rocketbox_sports/female/Export/Sports_Female_01.fbx
+          test -f data/vendor/rocketbox_sports/female/Export/Sports_Female_02.fbx
       - name: Install real Blender for headless mesh and skinning QA
         run: |
           sudo apt-get update -qq
