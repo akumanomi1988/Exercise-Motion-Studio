@@ -310,6 +310,20 @@ def generate(source: Path, avatar: Path, output: Path,
                         rig.data.bones[name].tail_local)
         for name, _, _ in BONE_TARGETS
     }
+    # A fixed hip/root makes a squat's feet intersect the ground as the
+    # knees bend. With monocular hip-relative observations we cannot recover
+    # the true absolute root; solve only a local VERTICAL support correction.
+    # This uses genuine reconstructed foot directions, not a synthetic motion.
+    rig.location.z = 0.0
+    bpy.context.view_layer.update()
+    rest_foot_floor_z = min(
+        (rig.matrix_world @ rig.pose.bones[name].tail).z
+        for name in ("foot_l", "foot_r")
+    )
+    previous_root_z = 0.0
+    support_anchors = []
+    support_held_frames = 0
+    maximum_root_vertical_displacement = 0.0
     last_safe_dirs = {}
     low_visibility_holds = 0
     temporal_swing_clamps = 0
@@ -329,6 +343,9 @@ def generate(source: Path, avatar: Path, output: Path,
         require(fno > last_frame_number, "frame timestamps collide at requested fps")
         last_frame_number = fno
         scene.frame_set(fno)
+        # Prevent last frame's animated root transform from contaminating
+        # the next frame's local ground-relative estimate.
+        rig.location.z = 0.0
         for posebone, _, _ in mapped:
             posebone.rotation_mode = "QUATERNION"
             posebone.rotation_quaternion = (1, 0, 0, 0)
@@ -372,6 +389,36 @@ def generate(source: Path, avatar: Path, output: Path,
                 last_safe_dirs[name] = expected
             err = _set_global_direction(posebone, expected)
             peak_angular_error = max(peak_angular_error, err)
+        # The lower VISIBLE toe approximates a support anchor; when both toes
+        # are occluded or the frame is absent, HOLD the previous estimate.
+        # This does not solve horizontal foot locks or prove actual contact.
+        good_feet = []
+        if sample.get("state") == "SOLVED_REVIEW_REQUIRED":
+            if not ({"leftToe", "leftAnkle"} & unreliable):
+                good_feet.append("foot_l")
+            if not ({"rightToe", "rightAnkle"} & unreliable):
+                good_feet.append("foot_r")
+        bpy.context.view_layer.update()
+        if good_feet:
+            lowest_toe_z = min(
+                (rig.matrix_world @ rig.pose.bones[name].tail).z
+                for name in good_feet
+            )
+            previous_root_z = rest_foot_floor_z - lowest_toe_z
+            maximum_root_vertical_displacement = max(
+                maximum_root_vertical_displacement, abs(previous_root_z)
+            )
+        else:
+            support_held_frames += 1
+        rig.location.z = previous_root_z
+        bpy.context.view_layer.update()
+        support_anchors.append({
+            "frame": fno,
+            "valid": bool(good_feet),
+            "observed_feet": good_feet,
+            "applied_root_z_m": round(previous_root_z, 7),
+        })
+        rig.keyframe_insert(data_path="location", frame=fno)
         for posebone, _, _ in mapped:
             posebone.keyframe_insert(data_path="rotation_quaternion", frame=fno)
 
@@ -446,6 +493,13 @@ def generate(source: Path, avatar: Path, output: Path,
         "low_visibility_bone_holds": low_visibility_holds,
         "temporal_swing_clamps": temporal_swing_clamps,
         "swing_step_screen_limit_degrees": maximum_allowed_step_deg,
+        "foot_support_strategy": "VISIBLE_LOWEST_TOE_VERTICAL_ONLY_UNCALIBRATED",
+        "rest_foot_anchor_z_m": round(rest_foot_floor_z, 7),
+        "support_root_animation": support_anchors,
+        "support_frames_held": support_held_frames,
+        "maximum_vertical_root_correction_m": round(
+            maximum_root_vertical_displacement, 6
+        ),
         "original_video_sha256": raw["source_sha256"],
         "pose_model_sha256": raw["model_sha256"],
         "solved_skeleton_sha256": hashfile(source),
@@ -472,7 +526,7 @@ def generate(source: Path, avatar: Path, output: Path,
         "full_body_ik": "NOT_IMPLEMENTED",
         "absolute_root_motion": "NOT_OBSERVABLE",
         "hand_grips": "NOT_SOLVED",
-        "foot_contacts": "NOT_SOLVED",
+        "foot_contacts": "VERTICAL_SUPPORT_ESTIMATE_ONLY_NO_IK_OR_SLIDING_LOCK",
         "bone_twist": "NOT_OBSERVABLE",
         "commercial_approval": False,
         "qa_gate_g1": "NOT_APPROVED",
@@ -499,6 +553,10 @@ def generate(source: Path, avatar: Path, output: Path,
         "missing_frames_held_for_review": len(held_missing),
         "low_visibility_bone_holds": low_visibility_holds,
         "temporal_swing_clamps": temporal_swing_clamps,
+        "vertical_root_anchor_held_frames": support_held_frames,
+        "max_vertical_root_correction_m": round(
+            maximum_root_vertical_displacement, 6
+        ),
         "human_visual_review": "PENDING",
         "commercial_approval": False,
     }))
