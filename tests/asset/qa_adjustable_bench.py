@@ -92,13 +92,18 @@ def validate(folder: Path):
     start_seat = position(seat, 1)
     end_seat = position(seat, 31)
     change = end_back - start_back
-    require(change.z > .45, f"backrest did not rise visibly: {change.z:.5f} m")
-    require(change.x < -.20, f"backrest did not recline: {change.x:.5f} m")
+    # Geometric expected center displacement for radius 0.365m, 60 degrees:
+    # dz = 0.365*sin(60) = 0.3161m; dx = 0.365*(cos(60)-1) = -0.1825m.
+    expected_z = .365 * math.sin(math.radians(60))
+    expected_x = .365 * (math.cos(math.radians(60)) - 1)
+    require(abs(change.z - expected_z) < .025,
+            f"backrest vertical travel does not match 60-degree hinge: {change.z:.5f} m")
+    require(abs(change.x - expected_x) < .025,
+            f"backrest longitudinal travel does not match hinge: {change.x:.5f} m")
     require((end_fixed - start_fixed).length < .001,
             "fixed frame must never move with backrest")
     require((end_seat - start_seat).length < .001,
             "fixed seat must not move with backrest")
-    rot_first = hinge.matrix_world.to_quaternion() if False else None
     bpy.context.scene.frame_set(1)
     bpy.context.view_layer.update()
     rot_start = hinge.matrix_world.to_quaternion().copy()
