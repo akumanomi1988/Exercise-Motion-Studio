@@ -95,9 +95,17 @@ def attach_color_materials(source):
             mat.node_tree.links.new(normal_tex.outputs["Color"], nmap.inputs["Color"])
             mat.node_tree.links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
         assigned.append({"name": mat.name, "status": role.upper() + "_TEXTURED"})
-    for role, image in images.items():
-        require(image.has_data and min(image.size) >= 1024,
-                "source texture not decoded: " + role)
+    # Blender 5 can lazily load image datablocks: has_data/size are not
+    # authoritative until render/export. Check authenticated source TGA
+    # headers here and inspect *actual 2K GLB-embedded PNG bytes* in QA.
+    for role, file_list in textures.items():
+        raw = file_list[0].read_bytes()
+        require(len(raw) >= 1024 and raw[2] == 2,
+                "invalid/uncompressed original TGA texture " + role)
+        width = int.from_bytes(raw[12:14], "little")
+        height = int.from_bytes(raw[14:16], "little")
+        require(width >= 1024 and height >= 1024,
+                "upstream TGA source texture too small: " + role)
     return assigned
 
 
