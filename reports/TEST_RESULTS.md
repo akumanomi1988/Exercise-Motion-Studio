@@ -80,3 +80,10 @@ Registrar comandos y versiones para Windows 10/11, vídeos reales autorizados, r
 - PR #18, CI SUCCESS 44124085638. Unweighted skinned MPFB real original en `.blend` frente a GLB reimportado: 13380 vértices de malla original evaluada, 14765 en GLB tras splitting. Distancia geometría evaluada P95 0,0000005 m, P99 y máxima 0,0000007 m, ambos. Rig 53 huesos, test de deformación real PASS, GLB male 949312 bytes, female 948912 bytes. Test de regresión permanente en `tests/asset/qa_mpfb_bind_rest_fidelity.py`.
 - PR #16, CI SUCCESS 44124440610 y artifact 14346548007: 47 fotogramas de persona real, 46 detectados, 16 bones animados sobre los avatares saneados, GLB/PNG/WebP producidos y reimportados. QA automatizada de malla en movimiento PASS.
 - **Revisión humana de 8 vistas animadas: FAIL** por torsión excesiva y posturas inverosímiles en partes del ciclo. La exactitud de fuente y bind-rest no garantiza retarget de calidad. Se requieren controles de pose-neutral, límites articulares, confianza de segmentos, estabilidad temporal y contacto. NO SUBIR A BIBLIOTECA KINETIC.
+
+## AG2.2 — banco regulable (2026-11-18; ver CI)
+
+- Comando de generación: `blender -b --factory-startup --python-exit-code 10 --python src/blender/generate_adjustable_bench.py -- --output-dir data/generated_assets/adjustable-bench`.
+- Primera ejecución real: [run 44253816503](https://github.com/akumanomi1988/Exercise-Motion-Studio/actions/runs/44253816503), Blender 5.0.1. **Generador PASS**: .blend editable, .glb, preview.png 720x540 producidos. **QA FAIL**: `AssertionError: backrest vertical travel does not match 60-degree hinge: 0.23434 m` en frame 31 importado con distinta base FPS.
+- Reparación versionada: `timeline_fps=15`, `timeline_duration_seconds=2.0`; verificación GLB contra el mismo tiempo físico en el FPS del importador. No se rebaja el umbral de recorrido.
+- QA y derechos final: **PENDING** hasta resultado de CI posterior; contacto humano/máquina **NOT_TESTED**, `distribution_approved=false`. No sustituir con pruebas sintéticas ni aprobar por archivo GLB existente.
